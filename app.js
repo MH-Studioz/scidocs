@@ -184,7 +184,37 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     '\\slashed': '\\not{#1}',
     '\\rank': '\\operatorname{rank}',
     '\\diag': '\\operatorname{diag}',
-    '\\eps': '\\varepsilon'
+    '\\eps': '\\varepsilon',
+    '\\bm': '\\boldsymbol{#1}',
+    '\\mathds': '\\mathbb{#1}',
+    '\\vb': '\\mathbf{#1}',
+    '\\va': '\\vec{#1}',
+    '\\vu': '\\hat{#1}',
+    '\\grad': '\\nabla',
+    '\\curl': '\\nabla \\times',
+    '\\laplacian': '\\nabla^{2}',
+    '\\order': '\\mathcal{O}(#1)',
+    '\\eval': '\\left.#1\\right|',
+    '\\comm': '[#1,#2]',
+    '\\acomm': '\\{#1,#2\\}',
+    '\\poissonbracket': '\\{#1,#2\\}',
+    '\\expval': '\\left\\langle #1\\right\\rangle',
+    '\\ketbra': '\\left|#1\\right\\rangle\\!\\left\\langle #2\\right|',
+    '\\matrixel': '\\left\\langle #1\\,\\middle|\\,#2\\,\\middle|\\,#3\\right\\rangle',
+    '\\mel': '\\left\\langle #1\\,\\middle|\\,#2\\,\\middle|\\,#3\\right\\rangle',
+    '\\pqty': '\\left(#1\\right)',
+    '\\bqty': '\\left[#1\\right]',
+    '\\vqty': '\\left|#1\\right|',
+    '\\Bqty': '\\left\\{#1\\right\\}',
+    '\\erf': '\\operatorname{erf}',
+    '\\erfc': '\\operatorname{erfc}',
+    '\\sgn': '\\operatorname{sgn}',
+    '\\SI': '#1\\,\\mathrm{#2}',
+    '\\si': '\\mathrm{#1}',
+    '\\unit': '\\mathrm{#1}',
+    '\\num': '#1',
+    '\\dv': '\\frac{d #1}{d #2}',
+    '\\pdv': '\\frac{\\partial #1}{\\partial #2}'
   };
 
   const KATEX_BASE = {
@@ -868,10 +898,261 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     );
   }
 
+  /* ------------------------------------------------------------------ *
+   *  physics-package conveniences: optional arguments and delimiters
+   * ------------------------------------------------------------------ */
+  const PHYSICS_SIZE = /\\(?:bigg|Bigg|big|Big)[lr]?/;
+
+  function skipTexSpace(tex, index) {
+    let i = index;
+    while (i < tex.length && /\s/.test(tex[i])) i += 1;
+    return i;
+  }
+
+  function readTexGroup(tex, start) {
+    if (tex[start] !== '{') return null;
+    let depth = 0;
+    for (let i = start; i < tex.length; i += 1) {
+      const ch = tex[i];
+      if (ch === '\\') { i += 1; continue; }
+      if (ch === '{') depth += 1;
+      else if (ch === '}') {
+        depth -= 1;
+        if (depth === 0) return { content: tex.slice(start + 1, i), end: i + 1 };
+      }
+    }
+    return null;
+  }
+
+  function readTexBracket(tex, start) {
+    if (tex[start] !== '[') return null;
+    let depth = 0;
+    for (let i = start; i < tex.length; i += 1) {
+      const ch = tex[i];
+      if (ch === '\\') { i += 1; continue; }
+      if (ch === '{') {
+        const group = readTexGroup(tex, i);
+        if (!group) return null;
+        i = group.end - 1;
+        continue;
+      }
+      if (ch === '[') depth += 1;
+      else if (ch === ']') {
+        depth -= 1;
+        if (depth === 0) return { content: tex.slice(start + 1, i), end: i + 1 };
+      }
+    }
+    return null;
+  }
+
+  function findQtyClose(tex, start, open, close) {
+    let depth = 0;
+    let braces = 0;
+    for (let i = start; i < tex.length; i += 1) {
+      const ch = tex[i];
+      if (ch === '\\') {
+        const pair = tex.slice(i, i + 2);
+        if (braces === 0 && depth === 0 && open !== close && pair === close) {
+          return { contentEnd: i, end: i + 2 };
+        }
+        if (braces === 0 && open === close && pair === open && i > start) {
+          return { contentEnd: i, end: i + 2 };
+        }
+        i += 1;
+        continue;
+      }
+      if (ch === '{') { braces += 1; continue; }
+      if (ch === '}') { braces -= 1; continue; }
+      if (braces > 0) continue;
+      if (open === close) {
+        if (ch === open) {
+          if (depth === 0) return { contentEnd: i, end: i + 1 };
+          depth += 1;
+        }
+        continue;
+      }
+      if (ch === open) { depth += 1; continue; }
+      if (ch === close) {
+        if (depth === 0) return { contentEnd: i, end: i + 1 };
+        depth -= 1;
+      }
+    }
+    return null;
+  }
+
+  function splitBraket(content) {
+    const parts = [];
+    let current = '';
+    let braces = 0;
+    for (let i = 0; i < content.length; i += 1) {
+      const ch = content[i];
+      if (ch === '\\') {
+        current += ch + (content[i + 1] || '');
+        i += 1;
+        continue;
+      }
+      if (ch === '{') braces += 1;
+      if (ch === '}') braces -= 1;
+      if (ch === '|' && braces === 0) {
+        parts.push(current.trim());
+        current = '';
+        continue;
+      }
+      current += ch;
+    }
+    parts.push(current.trim());
+    return parts.map(expandPhysicsMacros);
+  }
+
+  function readDerivative(tex, index, partial) {
+    const name = partial ? '\\pdv' : '\\dv';
+    let i = skipTexSpace(tex, index + name.length);
+    let order = '';
+    if (tex[i] === '[') {
+      const opt = readTexBracket(tex, i);
+      if (!opt) return null;
+      order = opt.content.trim();
+      i = skipTexSpace(tex, opt.end);
+    }
+    const top = readTexGroup(tex, i);
+    if (!top) return null;
+    i = skipTexSpace(tex, top.end);
+    const bottom = readTexGroup(tex, i);
+    if (!bottom) return null;
+    i = skipTexSpace(tex, bottom.end);
+    const sup = order ? '^{' + order + '}' : '';
+    const fn = expandPhysicsMacros(top.content);
+    const variable = expandPhysicsMacros(bottom.content);
+    if (partial) {
+      if (tex[i] === '{') {
+        const second = readTexGroup(tex, i);
+        if (second) {
+          return {
+            html: '\\frac{\\partial^{2} ' + fn + '}{\\partial ' + variable +
+              ' \\partial ' + expandPhysicsMacros(second.content) + '}',
+            end: second.end
+          };
+        }
+      }
+      return {
+        html: '\\frac{\\partial' + sup + ' ' + fn + '}{\\partial ' + variable + sup + '}',
+        end: i
+      };
+    }
+    return {
+      html: '\\frac{d' + sup + ' ' + fn + '}{d' + variable + sup + '}',
+      end: i
+    };
+  }
+
+  function readQty(tex, index) {
+    let i = skipTexSpace(tex, index + 4);
+    const size = PHYSICS_SIZE.exec(tex.slice(i));
+    if (size && size.index === 0) i = skipTexSpace(tex, i + size[0].length);
+    const open = tex[i];
+    if (open === '{') {
+      const group = readTexGroup(tex, i);
+      if (!group) return null;
+      return {
+        html: '\\left\\{' + expandPhysicsMacros(group.content) + '\\right\\}',
+        end: group.end
+      };
+    }
+    let openTex = '';
+    let closeTex = '';
+    let openChar = '';
+    let closeChar = '';
+    let contentStart = i;
+    if (open === '(' || open === '[') {
+      openChar = open;
+      closeChar = open === '(' ? ')' : ']';
+      openTex = open;
+      closeTex = closeChar;
+      contentStart = i + 1;
+    } else if (tex.slice(i, i + 2) === '\\{') {
+      openChar = '\\{';
+      closeChar = '\\}';
+      openTex = '\\{';
+      closeTex = '\\}';
+      contentStart = i + 2;
+    } else if (tex.slice(i, i + 2) === '\\|') {
+      openChar = '\\|';
+      closeChar = '\\|';
+      openTex = '\\|';
+      closeTex = '\\|';
+      contentStart = i + 2;
+    } else if (open === '|') {
+      openChar = '|';
+      closeChar = '|';
+      openTex = '|';
+      closeTex = '|';
+      contentStart = i + 1;
+    } else {
+      return null;
+    }
+    const found = findQtyClose(tex, contentStart, openChar, closeChar);
+    if (!found) return null;
+    let content = tex.slice(contentStart, found.contentEnd);
+    content = content.replace(/\\(?:bigg|Bigg|big|Big)[lr]?\s*$/, '');
+    return {
+      html: '\\left' + openTex + ' ' + expandPhysicsMacros(content) + ' \\right' + closeTex,
+      end: found.end
+    };
+  }
+
+  function expandPhysicsMacros(input) {
+    const tex = String(input || '');
+    if (tex.indexOf('\\') === -1) return tex;
+    let out = '';
+    let i = 0;
+    while (i < tex.length) {
+      if (tex[i] !== '\\') {
+        out += tex[i];
+        i += 1;
+        continue;
+      }
+      if (tex.startsWith('\\dv', i) && !/[A-Za-z]/.test(tex[i + 3] || '')) {
+        const parsed = readDerivative(tex, i, false);
+        if (parsed) { out += parsed.html; i = parsed.end; continue; }
+      }
+      if (tex.startsWith('\\pdv', i) && !/[A-Za-z]/.test(tex[i + 4] || '')) {
+        const parsed = readDerivative(tex, i, true);
+        if (parsed) { out += parsed.html; i = parsed.end; continue; }
+      }
+      if (tex.startsWith('\\qty', i) && !/[A-Za-z]/.test(tex[i + 4] || '')) {
+        const parsed = readQty(tex, i);
+        if (parsed) { out += parsed.html; i = parsed.end; continue; }
+      }
+      if (tex.startsWith('\\braket', i) && !/[A-Za-z]/.test(tex[i + 7] || '')) {
+        const start = skipTexSpace(tex, i + 7);
+        const group = readTexGroup(tex, start);
+        if (group && tex[skipTexSpace(tex, group.end)] !== '{') {
+          out += '\\left\\langle ' + splitBraket(group.content).join(' \\middle| ') +
+            ' \\right\\rangle';
+          i = group.end;
+          continue;
+        }
+      }
+      if ((tex.startsWith('\\vb*', i) || tex.startsWith('\\va*', i)) &&
+        !/[A-Za-z]/.test(tex[i + 4] || '')) {
+        const start = skipTexSpace(tex, i + 4);
+        const group = readTexGroup(tex, start);
+        if (group) {
+          out += '\\boldsymbol{' + expandPhysicsMacros(group.content) + '}';
+          i = group.end;
+          continue;
+        }
+      }
+      out += tex[i];
+      i += 1;
+    }
+    return out;
+  }
+
   function renderMath(expr, display, ctx) {
-    const clean = String(expr)
+    const clean = expandPhysicsMacros(String(expr)
       .replace(/\\label\s*\{[^}]*\}/g, '')
-      .replace(/\\(nonumber|notag)\b/g, '')
+      .replace(/\\(nonumber|notag)\b/g, ''))
       .trim();
     if (!clean) return '';
     if (!window.katex) {
@@ -1594,6 +1875,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
           throwOnError: false,
           strict: false,
           macros: MACROS,
+          preProcess: (math) => expandPhysicsMacros(math),
           errorColor: '#DC2626'
         });
       } catch (err) {
