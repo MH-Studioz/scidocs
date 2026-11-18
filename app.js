@@ -2890,7 +2890,9 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
   }
 
   function leftoverWords(latex) {
-    const withoutCommands = String(latex).replace(/\\[A-Za-z]+/g, ' ');
+    const withoutCommands = String(latex)
+      .replace(/\\[,;:!]\s*d\s*\\?[A-Za-z]+\b/g, ' ')
+      .replace(/\\[A-Za-z]+/g, ' ');
     const words = withoutCommands.match(/[A-Za-z]{2,}/g) || [];
     return Array.from(new Set(words.map((w) => w.toLowerCase()))).slice(0, 3);
   }

@@ -213,10 +213,13 @@ body.modal-open {
   background: linear-gradient(145deg, #818CF8, #4F46E5 60%, #4338CA);
   box-shadow: 0 8px 20px -8px rgba(99, 102, 241, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.25);
   color: #fff;
-  font-family: var(--serif);
-  font-size: 23px;
   line-height: 1;
-  padding-bottom: 2px;
+}
+
+.brand-mark svg {
+  width: 21px;
+  height: 21px;
+  display: block;
 }
 
 .brand-text {
