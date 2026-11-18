@@ -118,7 +118,7 @@ Truncating to the first three levels gives
 \end{equation}
 
 \section{Summary}
-\begin{table}[h]
+\begin{table}
   \centering
   \caption{Lowest energy eigenstates of the harmonic oscillator.}
   \begin{tabular}{|c|c|c|}
