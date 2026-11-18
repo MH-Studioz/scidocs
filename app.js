@@ -165,7 +165,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
 `;
 
   /* ------------------------------------------------------------------ *
-   *  KaTeX macros shared by the preview and the symbol drawer
+   *  TeX macros shared by the preview and the symbol drawer
    * ------------------------------------------------------------------ */
   const MACROS = {
     '\\R': '\\mathbb{R}',
@@ -180,6 +180,8 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     '\\braket': '\\left\\langle#1\\,\\middle|\\,#2\\right\\rangle',
     '\\dd': '\\mathrm{d}',
     '\\tr': '\\operatorname{tr}',
+    '\\Tr': '\\operatorname{Tr}',
+    '\\slashed': '\\not{#1}',
     '\\rank': '\\operatorname{rank}',
     '\\diag': '\\operatorname{diag}',
     '\\eps': '\\varepsilon'
@@ -879,7 +881,8 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       const html = window.katex.renderToString(clean, Object.assign({}, KATEX_BASE, {
         displayMode: Boolean(display)
       }));
-      if (ctx && html.indexOf('katex-error') >= 0 && ctx.warnings.length < 4) {
+      if (ctx && (html.indexOf('katex-error') >= 0 || html.indexOf('mathcolor="#DC2626"') >= 0) &&
+        ctx.warnings.length < 4) {
         ctx.warnings.push('LaTeX could not fully parse “' + shorten(clean, 60) + '”.');
       }
       return html;
