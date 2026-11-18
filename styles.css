@@ -1927,6 +1927,18 @@ body.sidebar-collapsed .sidebar {
 
 .ai-config-grid .field { margin-bottom: 8px; }
 
+.ai-config-body .field-area {
+  min-height: 54px;
+  resize: vertical;
+}
+
+.ai-optional {
+  color: var(--muted-2);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .ai-auto {
   display: flex;
   align-items: flex-start;

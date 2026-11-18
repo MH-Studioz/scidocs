@@ -2666,6 +2666,9 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
 
   function applyPowers(input) {
     let s = input;
+    s = s.replace(/([A-Za-z0-9)\]}]+)\s+to\s+the\s+(?:power\s+of\s+)?(?:minus|negative)\s+([A-Za-z0-9.]+)\s+squared\b/gi, '$1^{-$2^{2}}');
+    s = s.replace(/([A-Za-z0-9)\]}]+)\s+to\s+the\s+(?:power\s+of\s+)?(?:minus|negative)\s+([A-Za-z0-9.]+)\s+cubed\b/gi, '$1^{-$2^{3}}');
+    s = s.replace(/([A-Za-z0-9)\]}]+)\s+to\s+the\s+(?:power\s+of\s+)?(?:minus|negative)\s+([A-Za-z0-9.]+)\b/gi, '$1^{-$2}');
     s = s.replace(/([A-Za-z0-9)\]}]+)\s+squared\b/gi, '$1^{2}');
     s = s.replace(/([A-Za-z0-9)\]}]+)\s+cubed\b/gi, '$1^{3}');
     s = s.replace(
@@ -2915,14 +2918,19 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     apiKey: '',
     model: 'google/gemini-3.5-flash-lite',
     baseUrl: 'https://openrouter.ai/api/v1',
-    auto: true
+    auto: true,
+    instructions: ''
   };
   const AI_SYSTEM_PROMPT =
-    'You convert plain-English mathematics into one LaTeX math expression. ' +
+    'You are SciDocs AI, a precise math transcription engine. ' +
+    'Convert plain-English mathematics into one LaTeX math expression. ' +
     'Return only the LaTeX code: no dollar signs, no code fences, no explanation. ' +
     'Use standard KaTeX-compatible commands and preserve fractions, integrals with limits, ' +
-    'derivatives, roots, subscripts, superscripts, vectors and Greek letters. ' +
-    'If the wording is ambiguous, choose the most standard mathematical reading.';
+    'derivatives, roots, subscripts, superscripts, vectors, matrices and Greek letters. ' +
+    'If the wording is ambiguous, choose the most standard mathematical reading. ' +
+    'Examples: "e to the minus x squared" -> e^{-x^{2}}; ' +
+    '"sum from i=1 to n of i squared" -> \\sum_{i=1}^{n} i^{2}; ' +
+    '"partial derivative of psi with respect to t" -> \\frac{\\partial \\psi}{\\partial t}.';
 
   function readAiConfig() {
     try {
@@ -2934,7 +2942,8 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
           baseUrl: typeof raw.baseUrl === 'string' && raw.baseUrl.trim()
             ? raw.baseUrl.trim().replace(/\/+$/, '')
             : AI_DEFAULTS.baseUrl,
-          auto: raw.auto !== false
+          auto: raw.auto !== false,
+          instructions: typeof raw.instructions === 'string' ? raw.instructions : ''
         };
       }
     } catch (_) { /* storage may be unavailable */ }
@@ -2953,10 +2962,12 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     const base = $('#aiBase');
     const state = $('#aiState');
     const auto = $('#aiAuto');
+    const instructions = $('#aiInstructions');
     if (key) key.value = aiConfig.apiKey;
     if (model) model.value = aiConfig.model;
     if (base) base.value = aiConfig.baseUrl;
     if (auto) auto.checked = Boolean(aiConfig.auto);
+    if (instructions) instructions.value = aiConfig.instructions || '';
     if (state) {
       state.textContent = aiConfig.apiKey
         ? (aiConfig.auto ? 'auto on' : 'key saved')
@@ -2973,6 +2984,62 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     s = s.replace(/^\$([\s\S]*?)\$$/, '$1');
     s = s.replace(/^(?:latex|formula)\s*[:：]\s*/i, '').trim();
     return s;
+  }
+
+  function buildAiSystemPrompt() {
+    const custom = (aiConfig.instructions || '').trim();
+    if (!custom) return AI_SYSTEM_PROMPT;
+    return AI_SYSTEM_PROMPT +
+      '\n\nCustom instructions from this user (follow unless they conflict with returning only KaTeX-compatible LaTeX): ' +
+      custom;
+  }
+
+  function aiLatexParseError(latex) {
+    if (!window.katex) return '';
+    try {
+      window.katex.renderToString(latex, { throwOnError: true, strict: false, macros: MACROS });
+      return '';
+    } catch (err) {
+      return err && err.message ? String(err.message) : 'Invalid LaTeX';
+    }
+  }
+
+  async function requestAiCompletion(messages, signal) {
+    const base = aiConfig.baseUrl.replace(/\/+$/, '');
+    const response = await fetch(base + '/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + aiConfig.apiKey
+      },
+      body: JSON.stringify({
+        model: aiConfig.model,
+        temperature: 0,
+        max_tokens: 600,
+        messages: messages
+      }),
+      signal: signal
+    });
+
+    if (!response.ok) {
+      let detail = '';
+      try {
+        const body = await response.json();
+        detail = body && body.error && body.error.message ? String(body.error.message) : '';
+      } catch (_) { /* non-JSON error */ }
+      const error = new Error('AI request failed (' + response.status + ')' +
+        (detail ? ': ' + detail.slice(0, 140) : ''));
+      error.status = response.status;
+      throw error;
+    }
+
+    const data = await response.json();
+    const message = data && data.choices && data.choices[0] && data.choices[0].message;
+    return message && (typeof message.content === 'string'
+      ? message.content
+      : Array.isArray(message.content)
+        ? message.content.map((part) => (part && part.text) || '').join('')
+        : '');
   }
 
   let aiRefineTimer = null;
@@ -3054,53 +3121,37 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       timedOut = true;
       controller.abort();
     }, 30000);
+    const messages = [
+      { role: 'system', content: buildAiSystemPrompt() },
+      {
+        role: 'user',
+        content: 'Plain English: ' + text +
+          '\n\nRule-based draft (may be imperfect): ' + (draft || '(none)')
+      }
+    ];
+
     try {
-      const base = aiConfig.baseUrl.replace(/\/+$/, '');
-      const response = await fetch(base + '/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer ' + aiConfig.apiKey
-        },
-        body: JSON.stringify({
-          model: aiConfig.model,
-          temperature: 0,
-          max_tokens: 600,
-          messages: [
-            { role: 'system', content: AI_SYSTEM_PROMPT },
-            {
-              role: 'user',
-              content: 'Plain English: ' + text +
-                '\n\nRule-based draft (may be imperfect): ' + (draft || '(none)')
-            }
-          ]
-        }),
-        signal: controller.signal
-      });
-
-      if (!response.ok) {
-        let detail = '';
-        try {
-          const body = await response.json();
-          detail = body && body.error && body.error.message ? String(body.error.message) : '';
-        } catch (_) { /* non-JSON error */ }
-        throw new Error('AI request failed (' + response.status + ')' +
-          (detail ? ': ' + detail.slice(0, 140) : ''));
-      }
-
-      const data = await response.json();
-      const message = data && data.choices && data.choices[0] && data.choices[0].message;
-      const content = message && (typeof message.content === 'string'
-        ? message.content
-        : Array.isArray(message.content)
-          ? message.content.map((part) => (part && part.text) || '').join('')
-          : '');
-      const latex = cleanAiLatex(content);
+      let content = await requestAiCompletion(messages, controller.signal);
+      let latex = cleanAiLatex(content);
       if (!latex) throw new Error('AI returned an empty result.');
+      let parseError = aiLatexParseError(latex);
 
-      if (window.katex) {
-        window.katex.renderToString(latex, { throwOnError: true, strict: false, macros: MACROS });
+      /* one self-repair pass if the model produced invalid KaTeX */
+      if (parseError) {
+        if (token !== aiRequestToken || input.value.trim() !== text) return;
+        messages.push({ role: 'assistant', content: latex });
+        messages.push({
+          role: 'user',
+          content: 'That LaTeX failed to parse in KaTeX: ' + parseError.slice(0, 220) +
+            '. Return only a corrected KaTeX-compatible expression, with no delimiters or explanation.'
+        });
+        content = await requestAiCompletion(messages, controller.signal);
+        latex = cleanAiLatex(content);
+        if (!latex) throw new Error('AI returned an empty result.');
+        parseError = aiLatexParseError(latex);
+        if (parseError) throw new Error('AI returned invalid LaTeX.');
       }
+
       if (token !== aiRequestToken) return;
       if (input.value.trim() !== text) return;
 
@@ -3133,6 +3184,38 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
         button.disabled = false;
         button.removeAttribute('aria-busy');
       }
+    }
+  }
+
+  async function testAiConnection() {
+    const note = $('#aiConfigNote');
+    const button = $('#aiTest');
+    const key = $('#aiKey') ? $('#aiKey').value.trim() : '';
+    const base = ($('#aiBase') && $('#aiBase').value.trim()
+      ? $('#aiBase').value.trim()
+      : AI_DEFAULTS.baseUrl).replace(/\/+$/, '');
+    if (!key) {
+      if (note) note.textContent = 'Add a key first.';
+      return;
+    }
+    if (!/^https:\/\//i.test(base)) {
+      if (note) note.textContent = 'Base URL must start with https://';
+      return;
+    }
+    if (button) button.disabled = true;
+    if (note) note.textContent = 'Testing…';
+    try {
+      const response = await fetch(base + '/models', {
+        headers: { Authorization: 'Bearer ' + key }
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const data = await response.json();
+      const count = data && Array.isArray(data.data) ? data.data.length : 0;
+      if (note) note.textContent = 'Connected' + (count ? ' · ' + count + ' models' : '');
+    } catch (err) {
+      if (note) note.textContent = 'Test failed: ' + (err && err.message ? err.message : 'network error');
+    } finally {
+      if (button) button.disabled = false;
     }
   }
 
@@ -3604,32 +3687,56 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       const base = ($('#aiBase') && $('#aiBase').value.trim()
         ? $('#aiBase').value.trim()
         : AI_DEFAULTS.baseUrl).replace(/\/+$/, '');
+      const instructions = $('#aiInstructions') ? $('#aiInstructions').value.trim() : '';
       if (!/^https:\/\//i.test(base)) {
         if ($('#aiConfigNote')) $('#aiConfigNote').textContent = 'Base URL must start with https://';
         return;
       }
-      aiConfig = { apiKey: key, model: model, baseUrl: base, auto: aiConfig.auto };
+      aiConfig = {
+        apiKey: key,
+        model: model,
+        baseUrl: base,
+        auto: aiConfig.auto,
+        instructions: instructions
+      };
+      lastAiText = '';
       persistAiConfig();
       syncAiFields();
       if ($('#aiConfigNote')) {
         $('#aiConfigNote').textContent = key ? 'Saved in this browser.' : 'No key saved.';
       }
+      scheduleAiRefine();
     });
     const aiClear = $('#aiClear');
     if (aiClear) aiClear.addEventListener('click', () => {
       cancelAiRefine();
-      aiConfig = { apiKey: '', model: aiConfig.model, baseUrl: aiConfig.baseUrl, auto: aiConfig.auto };
+      aiConfig = {
+        apiKey: '',
+        model: aiConfig.model,
+        baseUrl: aiConfig.baseUrl,
+        auto: aiConfig.auto,
+        instructions: aiConfig.instructions
+      };
+      lastAiText = '';
       persistAiConfig();
       syncAiFields();
       updateNlpOutput();
       if ($('#aiConfigNote')) $('#aiConfigNote').textContent = 'Key cleared.';
     });
+    const aiTest = $('#aiTest');
+    if (aiTest) aiTest.addEventListener('click', testAiConnection);
     const aiAuto = $('#aiAuto');
     if (aiAuto) aiAuto.addEventListener('change', () => {
       aiConfig.auto = aiAuto.checked;
       persistAiConfig();
-      syncAiFields();
+      const state = $('#aiState');
+      if (state) {
+        state.textContent = aiConfig.apiKey
+          ? (aiConfig.auto ? 'auto on' : 'key saved')
+          : 'optional';
+      }
       if (aiConfig.auto) {
+        lastAiText = '';
         scheduleAiRefine();
       } else {
         cancelAiRefine();

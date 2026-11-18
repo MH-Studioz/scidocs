@@ -18,7 +18,7 @@
   <!-- Rendering engines -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css" />
-  <link rel="stylesheet" href="styles.css?v=25" />
+  <link rel="stylesheet" href="styles.css?v=27" />
 
   <script defer src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
@@ -29,7 +29,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/closebrackets.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/selection/active-line.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
-  <script defer src="app.js?v=25"></script>
+  <script defer src="app.js?v=27"></script>
 </head>
 
 <body class="app">
@@ -244,6 +244,8 @@
                 <input id="aiBase" class="field mono" type="text" autocomplete="off" spellcheck="false" />
               </div>
             </div>
+            <label class="field-label" for="aiInstructions">Custom instructions <span class="ai-optional">optional</span></label>
+            <textarea id="aiInstructions" class="field field-area mono" rows="2" spellcheck="false" placeholder="e.g. Prefer \dfrac and pmatrix; keep vectors bold"></textarea>
             <label class="ai-auto">
               <input type="checkbox" id="aiAuto" />
               <span>
@@ -252,7 +254,8 @@
               </span>
             </label>
             <div class="ai-config-actions">
-              <button class="btn btn-ghost" type="button" id="aiSave">Save key</button>
+              <button class="btn btn-ghost" type="button" id="aiSave">Save</button>
+              <button class="btn btn-ghost" type="button" id="aiTest" title="Check the /models endpoint">Test</button>
               <button class="btn btn-ghost" type="button" id="aiClear">Clear</button>
               <span class="hint" id="aiConfigNote"></span>
             </div>
