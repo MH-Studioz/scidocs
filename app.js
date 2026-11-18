@@ -2585,6 +2585,10 @@ Close with the main takeaway.
     window.CodeMirror.registerHelper('hint', 'stex', latexHint);
   }
 
+  function showLatexHint() {
+    if (cm && cm.showHint) cm.showHint({ hint: latexHint, completeSingle: false });
+  }
+
   function initEditor() {
     const host = $('#editorHost');
     if (!host) return;
@@ -2623,9 +2627,9 @@ Close with the main takeaway.
         },
         'Cmd-K': () => openNlp(),
         'Ctrl-K': () => openNlp(),
-        'Ctrl-Space': () => {
-          if (cm && cm.showHint) cm.showHint({ hint: latexHint, completeSingle: false });
-        }
+        'Ctrl-Space': showLatexHint,
+        'Cmd-Space': showLatexHint,
+        'Alt-/': showLatexHint
       }
     });
 
@@ -3127,11 +3131,28 @@ Close with the main takeaway.
     try { localStorage.setItem(AI_STORE_KEY, JSON.stringify(aiConfig)); } catch (_) { /* ignore */ }
   }
 
+  function aiBadgeText() {
+    if (!aiConfig.apiKey) return 'optional';
+    return aiConfig.auto ? 'auto on' : 'key saved';
+  }
+
+  function syncAiBadge() {
+    const state = $('#aiState');
+    if (state) state.textContent = aiBadgeText();
+  }
+
+  function setNlpNote(text, kind) {
+    const note = $('#nlpNote');
+    if (!note) return;
+    note.classList.remove('is-warn', 'is-busy', 'is-ai');
+    if (kind) note.classList.add('is-' + kind);
+    note.textContent = text;
+  }
+
   function syncAiFields() {
     const key = $('#aiKey');
     const model = $('#aiModel');
     const base = $('#aiBase');
-    const state = $('#aiState');
     const auto = $('#aiAuto');
     const instructions = $('#aiInstructions');
     if (key) key.value = aiConfig.apiKey;
@@ -3139,11 +3160,7 @@ Close with the main takeaway.
     if (base) base.value = aiConfig.baseUrl;
     if (auto) auto.checked = Boolean(aiConfig.auto);
     if (instructions) instructions.value = aiConfig.instructions || '';
-    if (state) {
-      state.textContent = aiConfig.apiKey
-        ? (aiConfig.auto ? 'auto on' : 'key saved')
-        : 'optional';
-    }
+    syncAiBadge();
   }
 
   function cleanAiLatex(value) {
@@ -3252,7 +3269,6 @@ Close with the main takeaway.
     const auto = Boolean(options && options.auto);
     const input = $('#nlpInput');
     const output = $('#nlpOutput');
-    const note = $('#nlpNote');
     const button = $('#nlpAi');
     if (!input || !output) return;
     const text = input.value.trim();
@@ -3267,11 +3283,7 @@ Close with the main takeaway.
       if (config) config.open = true;
       const keyField = $('#aiKey');
       if (keyField) keyField.focus();
-      if (note) {
-        note.classList.remove('is-ai', 'is-busy');
-        note.classList.add('is-warn');
-        note.textContent = 'add an API key first';
-      }
+      setNlpNote('add an API key first', 'warn');
       return;
     }
 
@@ -3282,11 +3294,7 @@ Close with the main takeaway.
     const token = ++aiRequestToken;
     let timedOut = false;
     if (button) { button.disabled = true; button.setAttribute('aria-busy', 'true'); }
-    if (note) {
-      note.classList.remove('is-warn', 'is-ai');
-      note.classList.add('is-busy');
-      note.textContent = 'asking AI…';
-    }
+    setNlpNote('asking AI…', 'busy');
 
     const timer = setTimeout(() => {
       timedOut = true;
@@ -3328,25 +3336,17 @@ Close with the main takeaway.
 
       lastAiText = text;
       output.textContent = latex;
-      if (note) {
-        note.classList.remove('is-warn', 'is-busy');
-        note.classList.add('is-ai');
-        note.textContent = 'AI refined · ' + aiConfig.model;
-      }
+      setNlpNote('AI refined · ' + aiConfig.model, 'ai');
     } catch (err) {
       if (token !== aiRequestToken) return;
       if (err && err.name === 'AbortError' && !timedOut) return;
-      if (note) {
-        note.classList.remove('is-busy', 'is-ai');
-        note.classList.add('is-warn');
-        if (auto) {
-          note.textContent = 'AI unavailable · local draft';
-        } else {
-          const message = timedOut
-            ? 'AI request timed out'
-            : (err && err.message ? err.message : 'AI request failed');
-          note.textContent = message.length > 90 ? message.slice(0, 87) + '…' : message;
-        }
+      if (auto) {
+        setNlpNote('AI unavailable · local draft', 'warn');
+      } else {
+        const message = timedOut
+          ? 'AI request timed out'
+          : (err && err.message ? err.message : 'AI request failed');
+        setNlpNote(message.length > 90 ? message.slice(0, 87) + '…' : message, 'warn');
       }
     } finally {
       clearTimeout(timer);
@@ -3393,22 +3393,17 @@ Close with the main takeaway.
   function updateNlpOutput() {
     const input = $('#nlpInput');
     const output = $('#nlpOutput');
-    const note = $('#nlpNote');
     if (!input || !output) return;
 
     const latex = naturalToLatex(input.value);
     output.textContent = latex;
-
-    if (note) {
-      const leftovers = latex ? leftoverWords(latex) : [];
-      note.classList.remove('is-ai', 'is-busy');
-      note.classList.toggle('is-warn', leftovers.length > 0);
-      note.textContent = !latex
-        ? 'ready to insert'
-        : leftovers.length
-          ? 'kept as text: ' + leftovers.join(', ')
-          : 'ready to insert';
-    }
+    const leftovers = latex ? leftoverWords(latex) : [];
+    setNlpNote(
+      !latex ? 'ready to insert' : leftovers.length
+        ? 'kept as text: ' + leftovers.join(', ')
+        : 'ready to insert',
+      leftovers.length ? 'warn' : ''
+    );
   }
 
   function openNlp() {
@@ -3705,6 +3700,111 @@ Close with the main takeaway.
     return ok;
   }
 
+  function toBase64Url(bytes) {
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  function fromBase64Url(value) {
+    const padded = value.replace(/-/g, '+').replace(/_/g, '/') +
+      '='.repeat((4 - value.length % 4) % 4);
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  async function encodeSharePayload(payload) {
+    const bytes = new TextEncoder().encode(JSON.stringify(payload));
+    if (window.CompressionStream) {
+      try {
+        const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+        const compressed = new Uint8Array(await new Response(stream).arrayBuffer());
+        return 'z.' + toBase64Url(compressed);
+      } catch (_) { /* fall back to uncompressed */ }
+    }
+    return 'u.' + toBase64Url(bytes);
+  }
+
+  async function decodeSharePayload(hash) {
+    const raw = String(hash || '').replace(/^#share=/, '');
+    const dot = raw.indexOf('.');
+    if (dot < 1) return null;
+    const mode = raw.slice(0, dot);
+    const bytes = fromBase64Url(raw.slice(dot + 1));
+    let text = '';
+    if (mode === 'u') {
+      text = new TextDecoder().decode(bytes);
+    } else if (mode === 'z') {
+      if (!window.DecompressionStream) return null;
+      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      text = await new Response(stream).text();
+    } else {
+      return null;
+    }
+    const payload = JSON.parse(text);
+    if (!payload || typeof payload.content !== 'string') return null;
+    if (payload.content.length > 1000000) return null;
+    return {
+      name: typeof payload.name === 'string' ? payload.name.slice(0, 80) : '',
+      content: payload.content
+    };
+  }
+
+  async function shareDocument() {
+    if (!cm) return;
+    saveNow();
+    const project = activeProject();
+    const encoded = await encodeSharePayload({
+      v: 1,
+      name: projectFileStem(project),
+      content: cm.getValue()
+    });
+    const url = location.origin + location.pathname + '#share=' + encoded;
+    const ok = await copyText(url);
+    if (!ok) {
+      window.prompt('Copy this share link:', url);
+      return;
+    }
+    if (url.length > 50000) {
+      toast('Share link copied — it is long, so .tex download may be better for very large documents.', 'warn');
+    } else {
+      toast('Share link copied — the document is inside the link.', 'success');
+    }
+  }
+
+  async function openSharedFromLocation() {
+    if (!location.hash.startsWith('#share=')) return;
+    try {
+      const payload = await decodeSharePayload(location.hash);
+      history.replaceState(null, '', location.pathname + location.search);
+      if (!payload || !payload.content) {
+        toast('That share link is invalid or too large.', 'warn');
+        return;
+      }
+      const name = (payload.name || 'Shared Document') + ' (shared)';
+      const project = { id: uid(), name, content: payload.content, updatedAt: Date.now() };
+      state.projects.unshift(project);
+      state.activeId = project.id;
+      persist();
+      renderProjectSelect();
+      if (cm) {
+        cm.setValue(project.content);
+        cm.clearHistory();
+        cm.focus();
+      }
+      updateTabName();
+      renderNow();
+      toast('Opened shared document', 'success');
+    } catch (_) {
+      history.replaceState(null, '', location.pathname + location.search);
+      toast('Could not open that share link.', 'error');
+    }
+  }
+
   async function copySource() {
     if (!cm) return;
     const ok = await copyText(cm.getValue());
@@ -3818,6 +3918,7 @@ Close with the main takeaway.
     $('#exportPdfBtn').addEventListener('click', exportPdf);
     $('#printBtn').addEventListener('click', printPreview);
     $('#downloadTexBtn').addEventListener('click', downloadTex);
+    $('#shareBtn').addEventListener('click', shareDocument);
     $('#importTexBtn').addEventListener('click', importTexFile);
     $('#texFileInput').addEventListener('change', handleTexFile);
     renderTemplates();
@@ -3963,12 +4064,7 @@ Close with the main takeaway.
     if (aiAuto) aiAuto.addEventListener('change', () => {
       aiConfig.auto = aiAuto.checked;
       persistAiConfig();
-      const state = $('#aiState');
-      if (state) {
-        state.textContent = aiConfig.apiKey
-          ? (aiConfig.auto ? 'auto on' : 'key saved')
-          : 'optional';
-      }
+      syncAiBadge();
       if (aiConfig.auto) {
         lastAiText = '';
         scheduleAiRefine();
@@ -4029,6 +4125,7 @@ Close with the main takeaway.
       cm.focus();
     }
     refreshIcons();
+    openSharedFromLocation();
   }
 
   if (document.readyState === 'loading') {

@@ -48,7 +48,16 @@ If the model returns invalid KaTeX, SciDocs AI automatically sends one correctio
 
 ## Editor and files
 
-- **Ctrl/Cmd + Space** suggests LaTeX commands while typing.
+- **Ctrl + Space** (Windows/Linux) or **Cmd + Space** (macOS) suggests LaTeX commands while typing. If macOS Spotlight captures `Cmd + Space`, use **Alt + /**.
 - **Import** loads a `.tex` file into the editor; **.tex** downloads the current source.
+- **Share** copies a link containing the document; opening it imports a local `(shared)` project.
 - **Templates** starts a lab report, homework set or paper.
 - Projects autosave to `localStorage`; PDF export uses the rendered preview.
+
+## Share links
+
+**Share** encodes the current project name and LaTeX source into the URL fragment (after `#share=`) and copies the link. Nothing is uploaded: the recipient's browser decodes the document locally and opens it as a new project named `… (shared)`, leaving their existing projects alone.
+
+- The fragment is compressed when the browser supports `CompressionStream`, with a plain Base64 fallback.
+- Very large documents produce very long URLs; use **.tex** download for those.
+- Anyone with the link can read the document. It is not encrypted beyond HTTPS, so do not share unpublished or sensitive work with people you would not send the `.tex` file to.
