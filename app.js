@@ -206,6 +206,12 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     '\\pu': '\\mathrm{#1}',
     '\\set': '\\{#1\\}',
     '\\Set': '\\left\\{#1\\right\\}',
+    '\\pmqty': '\\begin{pmatrix}#1\\end{pmatrix}',
+    '\\bqmty': '\\begin{bmatrix}#1\\end{bmatrix}',
+    '\\Bmqty': '\\begin{Bmatrix}#1\\end{Bmatrix}',
+    '\\vmqty': '\\begin{vmatrix}#1\\end{vmatrix}',
+    '\\Vmqty': '\\begin{Vmatrix}#1\\end{Vmatrix}',
+    '\\smqty': '\\begin{smallmatrix}#1\\end{smallmatrix}',
     '\\expval': '\\left\\langle #1\\right\\rangle',
     '\\ketbra': '\\left|#1\\right\\rangle\\!\\left\\langle #2\\right|',
     '\\matrixel': '\\left\\langle #1\\,\\middle|\\,#2\\,\\middle|\\,#3\\right\\rangle',
@@ -1112,6 +1118,211 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     };
   }
 
+  function formatChemical(input) {
+    const text = String(input || '');
+    let out = '';
+    let i = 0;
+    let lastAtom = false;
+    while (i < text.length) {
+      const ch = text[i];
+      const rest = text.slice(i);
+      const arrows = [
+        ['<=>', '\\rightleftharpoons'],
+        ['<->', '\\leftrightarrow'],
+        ['->>', '\\longrightarrow'],
+        ['->', '\\longrightarrow'],
+        ['<-', '\\longleftarrow']
+      ];
+      const arrow = arrows.find(([token]) => rest.startsWith(token));
+      if (arrow) {
+        i += arrow[0].length;
+        const after = skipTexSpace(text, i);
+        if (text[after] === '[') {
+          const bracket = readTexBracket(text, after);
+          if (bracket) {
+            out += '\\overset{\\text{' + bracket.content + '}}{' + arrow[1] + '} ';
+            i = bracket.end;
+            lastAtom = false;
+            continue;
+          }
+        }
+        out += arrow[1] + ' ';
+        lastAtom = false;
+        continue;
+      }
+      if (ch === '^') {
+        i += 1;
+        let charge = '';
+        const group = readTexGroup(text, i);
+        if (group) {
+          charge = group.content;
+          i = group.end;
+        } else {
+          while (/[0-9]/.test(text[i] || '')) { charge += text[i]; i += 1; }
+          if (text[i] === '+' || text[i] === '-') { charge += text[i]; i += 1; }
+        }
+        out += '^{' + charge + '}';
+        lastAtom = false;
+        continue;
+      }
+      if (ch === '_') {
+        i += 1;
+        const group = readTexGroup(text, i);
+        if (group) {
+          out += '_{' + group.content + '}';
+          i = group.end;
+        } else {
+          let sub = '';
+          while (/[0-9A-Za-z]/.test(text[i] || '')) { sub += text[i]; i += 1; }
+          out += '_{' + sub + '}';
+        }
+        lastAtom = false;
+        continue;
+      }
+      if (/[0-9]/.test(ch)) {
+        let digits = '';
+        while (/[0-9]/.test(text[i] || '')) { digits += text[i]; i += 1; }
+        out += lastAtom ? '_{' + digits + '}' : digits;
+        continue;
+      }
+      if (/[A-Z]/.test(ch)) {
+        let symbol = ch;
+        if (/[a-z]/.test(text[i + 1] || '')) {
+          symbol += text[i + 1];
+          i += 1;
+        }
+        out += '\\mathrm{' + symbol + '}';
+        i += 1;
+        lastAtom = true;
+        continue;
+      }
+      if (/[a-z]/.test(ch)) {
+        let word = ch;
+        while (/[a-z]/.test(text[i + 1] || '')) {
+          word += text[i + 1];
+          i += 1;
+        }
+        out += '\\mathrm{' + word + '}';
+        i += 1;
+        lastAtom = true;
+        continue;
+      }
+      if (ch === '(') {
+        let depth = 0;
+        let end = -1;
+        for (let k = i; k < text.length; k += 1) {
+          if (text[k] === '\\') { k += 1; continue; }
+          if (text[k] === '(') depth += 1;
+          else if (text[k] === ')') {
+            depth -= 1;
+            if (depth === 0) { end = k; break; }
+          }
+        }
+        if (end === -1) { out += '('; i += 1; continue; }
+        const inner = text.slice(i + 1, end);
+        out += /^[a-z]+$/.test(inner) ? '\\text{(' + inner + ')}' : '(' + formatChemical(inner) + ')';
+        i = end + 1;
+        lastAtom = true;
+        continue;
+      }
+      if (ch === '[' || ch === ']') {
+        out += ch;
+        i += 1;
+        lastAtom = ch === ']';
+        continue;
+      }
+      if (ch === '+') {
+        const before = text[i - 1] || '';
+        const after = text[i + 1] || '';
+        const isCharge = before && !/\s/.test(before) && (after === '' || /\s/.test(after));
+        out += isCharge ? '^{+}' : ' + ';
+        i += 1;
+        lastAtom = false;
+        continue;
+      }
+      if (ch === '-') {
+        const before = text[i - 1] || '';
+        const after = text[i + 1] || '';
+        const isCharge = before && !/\s/.test(before) && (after === '' || /\s/.test(after));
+        out += isCharge ? '^{-}' : '-';
+        i += 1;
+        lastAtom = false;
+        continue;
+      }
+      if (ch === '=') { out += '='; i += 1; lastAtom = false; continue; }
+      if (ch === '#') { out += '\\equiv '; i += 1; lastAtom = false; continue; }
+      if (ch === '.') { out += '\\cdot '; i += 1; lastAtom = false; continue; }
+      if (ch === ',') { out += ', '; i += 1; lastAtom = false; continue; }
+      if (ch === ' ') { out += ' '; i += 1; lastAtom = false; continue; }
+      if (ch === '{') {
+        const group = readTexGroup(text, i);
+        if (group) {
+          out += '\\text{' + group.content + '}';
+          i = group.end;
+          lastAtom = false;
+          continue;
+        }
+      }
+      out += ch === '%' ? '\\%' : ch;
+      i += 1;
+      lastAtom = false;
+    }
+    return out.trim();
+  }
+
+  function readMatrixQuantity(tex, index) {
+    const open = tex[skipTexSpace(tex, index + 5)];
+    let i = skipTexSpace(tex, index + 5);
+    if (open === '{') {
+      const group = readTexGroup(tex, i);
+      if (!group) return null;
+      return {
+        html: '\\begin{matrix}' + expandPhysicsMacros(group.content) + '\\end{matrix}',
+        end: group.end
+      };
+    }
+    let openChar = '';
+    let closeChar = '';
+    let openTex = '';
+    let closeTex = '';
+    let contentStart = i;
+    if (open === '(' || open === '[') {
+      openChar = open;
+      closeChar = open === '(' ? ')' : ']';
+      openTex = open;
+      closeTex = closeChar;
+      contentStart = i + 1;
+    } else if (tex.slice(i, i + 2) === '\\{') {
+      openChar = '\\{';
+      closeChar = '\\}';
+      openTex = '\\{';
+      closeTex = '\\}';
+      contentStart = i + 2;
+    } else if (tex.slice(i, i + 2) === '\\|') {
+      openChar = '\\|';
+      closeChar = '\\|';
+      openTex = '\\|';
+      closeTex = '\\|';
+      contentStart = i + 2;
+    } else if (open === '|') {
+      openChar = '|';
+      closeChar = '|';
+      openTex = '|';
+      closeTex = '|';
+      contentStart = i + 1;
+    } else {
+      return null;
+    }
+    const found = findQtyClose(tex, contentStart, openChar, closeChar);
+    if (!found) return null;
+    const content = tex.slice(contentStart, found.contentEnd);
+    return {
+      html: '\\left' + openTex + ' \\begin{matrix}' + expandPhysicsMacros(content) +
+        '\\end{matrix} \\right' + closeTex,
+      end: found.end
+    };
+  }
+
   function expandPhysicsMacros(input) {
     const tex = String(input || '');
     if (tex.indexOf('\\') === -1) return tex;
@@ -1151,6 +1362,19 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       if (tex.startsWith('\\qty', i) && !/[A-Za-z]/.test(tex[i + 4] || '')) {
         const parsed = readQty(tex, i);
         if (parsed) { out += parsed.html; i = parsed.end; continue; }
+      }
+      if (tex.startsWith('\\mqty', i) && !/[A-Za-z]/.test(tex[i + 5] || '')) {
+        const parsed = readMatrixQuantity(tex, i);
+        if (parsed) { out += parsed.html; i = parsed.end; continue; }
+      }
+      if (tex.startsWith('\\ce', i) && !/[A-Za-z]/.test(tex[i + 3] || '')) {
+        const start = skipTexSpace(tex, i + 3);
+        const group = readTexGroup(tex, start);
+        if (group) {
+          out += formatChemical(group.content);
+          i = group.end;
+          continue;
+        }
       }
       if (tex.startsWith('\\braket', i) && !/[A-Za-z]/.test(tex[i + 7] || '')) {
         const start = skipTexSpace(tex, i + 7);
@@ -1273,6 +1497,33 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     text = text.replace(/\\[&%$#_{}]/g, (token) => hold(escapeHtml(token[1])));
     text = text.replace(/[ \t]*\n[ \t]*/g, ' ');
     text = text.replace(/[ \t]{2,}/g, ' ');
+
+    /* chemistry written outside math mode, e.g. "water is \ce{H2O}" */
+    let withChem = '';
+    let chemAt = 0;
+    while (chemAt < text.length) {
+      const pos = text.indexOf('\\ce', chemAt);
+      if (pos === -1) {
+        withChem += text.slice(chemAt);
+        break;
+      }
+      withChem += text.slice(chemAt, pos);
+      if (/[A-Za-z]/.test(text[pos + 3] || '')) {
+        withChem += '\\ce';
+        chemAt = pos + 3;
+        continue;
+      }
+      const start = skipTexSpace(text, pos + 3);
+      const group = readTexGroup(text, start);
+      if (!group) {
+        withChem += '\\ce';
+        chemAt = pos + 3;
+        continue;
+      }
+      withChem += hold(renderMath('\\ce{' + group.content + '}', false, ctx));
+      chemAt = group.end;
+    }
+    text = withChem;
     text = escapeHtml(text);
     text = text.replace(/\u0002(\d+)\u0002/g, (token, idx) =>
       slots[Number(idx)] !== undefined ? slots[Number(idx)] : ''
