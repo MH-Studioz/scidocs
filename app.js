@@ -182,6 +182,8 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     '\\tr': '\\operatorname{tr}',
     '\\Tr': '\\operatorname{Tr}',
     '\\slashed': '\\not{#1}',
+    '\\male': '\\text{♂}',
+    '\\female': '\\text{♀}',
     '\\rank': '\\operatorname{rank}',
     '\\diag': '\\operatorname{diag}',
     '\\eps': '\\varepsilon',
@@ -490,7 +492,88 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
         { display: '\\tilde{x}', label: 'tilde', insert: '\\tilde{x}' },
         { display: '\\overline{x}', label: 'overline', insert: '\\overline{x}' },
         { display: '\\epsilon_0', label: 'epsilon nought', insert: '\\epsilon_0' },
-        { display: '\\mu_0', label: 'mu nought', insert: '\\mu_0' }
+        { display: '\\mu_0', label: 'mu nought', insert: '\\mu_0' },
+        { display: 'c', label: 'speed of light', insert: 'c' },
+        { display: 'G', label: 'gravitational constant', insert: 'G' },
+        { display: 'k_B', label: 'Boltzmann constant', insert: 'k_{B}' },
+        { display: 'N_A', label: 'Avogadro constant', insert: 'N_{A}' },
+        { display: '\\mu_B', label: 'Bohr magneton', insert: '\\mu_B' },
+        { display: '\\Phi', label: 'flux', insert: '\\Phi ' }
+      ]
+    },
+    {
+      id: 'chemistry',
+      title: 'Chemistry',
+      icon: 'flask-conical',
+      items: [
+        { display: '\\ce{H2O}', label: 'Chemical formula', insert: '\\ce{' + CURSOR + '}' },
+        { display: '\\ce{A -> B}', label: 'Reaction', insert: '\\ce{' + CURSOR + ' -> }' },
+        { display: '\\ce{A <=> B}', label: 'Equilibrium reaction', insert: '\\ce{' + CURSOR + ' <=> }' },
+        { display: '\\ce{A ->[heat] B}', label: 'Reaction with condition', insert: '\\ce{' + CURSOR + ' ->[heat] }' },
+        { display: '\\ce{Fe^2+}', label: 'Ion charge', insert: '\\ce{Fe^2+}' },
+        { display: '\\ce{SO4^2-}', label: 'Polyatomic ion', insert: '\\ce{SO4^2-}' },
+        { display: '\\ce{NaOH(aq)}', label: 'Aqueous state', insert: '\\ce{' + CURSOR + '(aq)}' },
+        { display: '\\ce{H2O(g)}', label: 'Gas state', insert: '\\ce{' + CURSOR + '(g)}' },
+        { display: '\\rightleftharpoons', label: 'Equilibrium arrow', insert: '\\rightleftharpoons ' },
+        { display: '\\xrightarrow{\\text{heat}}', label: 'Labelled reaction arrow', insert: '\\xrightarrow{\\text{' + CURSOR + '}}' },
+        { display: '\\uparrow', label: 'Gas evolved', insert: '\\uparrow ' },
+        { display: '\\downarrow', label: 'Precipitate', insert: '\\downarrow ' },
+        { display: '^{\\circ}', label: 'Degrees', insert: '^{\\circ}' },
+        { display: '\\mathrm{pH}', label: 'pH', insert: '\\mathrm{pH}' },
+        { display: '\\mathrm{p}K_{a}', label: 'pKa', insert: '\\mathrm{p}K_{a}' },
+        { display: '\\Delta', label: 'Heat', insert: '\\Delta ' },
+        { display: '\\mathrm{sp}^{3}', label: 'sp3 orbital', insert: '\\mathrm{sp}^{3}' },
+        { display: '\\equiv', label: 'Triple bond', insert: '\\equiv ' }
+      ]
+    },
+    {
+      id: 'biology',
+      title: 'Biology',
+      icon: 'dna',
+      items: [
+        { text: '♂', label: 'male', insert: '\\male ' },
+        { text: '♀', label: 'female', insert: '\\female ' },
+        { display: '5^{\\prime} \\to 3^{\\prime}', label: 'DNA direction', insert: "5'-" + CURSOR + "-3'" },
+        { display: '\\text{DNA}', label: 'DNA', insert: '\\text{DNA}' },
+        { display: '\\text{RNA}', label: 'RNA', insert: '\\text{RNA}' },
+        { display: '\\text{mRNA}', label: 'mRNA', insert: '\\text{mRNA}' },
+        { display: '\\text{ATP}', label: 'ATP', insert: '\\text{ATP}' },
+        { display: '\\text{AUG}', label: 'codon', insert: '\\text{' + CURSOR + '}' },
+        { display: '\\times', label: 'genetic cross', insert: '\\times ' },
+        { display: '\\rightleftharpoons', label: 'enzyme equilibrium', insert: '\\rightleftharpoons ' },
+        { display: '\\uparrow', label: 'upregulated', insert: '\\uparrow ' },
+        { display: '\\downarrow', label: 'downregulated', insert: '\\downarrow ' },
+        { display: '\\alpha', label: 'alpha helix', insert: '\\alpha ' },
+        { display: '\\beta', label: 'beta sheet', insert: '\\beta ' },
+        { display: '\\Delta', label: 'change', insert: '\\Delta ' },
+        { display: '^{\\circ}', label: 'degrees', insert: '^{\\circ}' }
+      ]
+    },
+    {
+      id: 'quantum',
+      title: 'Quantum mechanics',
+      icon: 'waves',
+      items: [
+        { display: '\\ket{\\psi}', label: 'ket', insert: '\\ket{' + CURSOR + '}' },
+        { display: '\\bra{\\psi}', label: 'bra', insert: '\\bra{' + CURSOR + '}' },
+        { display: '\\braket{\\phi|\\psi}', label: 'braket', insert: '\\braket{' + CURSOR + '}' },
+        { display: '\\ketbra{\\psi}{\\phi}', label: 'density operator', insert: '\\ketbra{' + CURSOR + '}{}' },
+        { display: '\\expval{A}', label: 'expectation value', insert: '\\expval{' + CURSOR + '}' },
+        { display: '\\matrixel{\\phi}{A}{\\psi}', label: 'matrix element', insert: '\\matrixel{' + CURSOR + '}{A}{}' },
+        { display: '\\comm{A}{B}', label: 'commutator', insert: '\\comm{' + CURSOR + '}{}' },
+        { display: '\\acomm{A}{B}', label: 'anticommutator', insert: '\\acomm{' + CURSOR + '}{}' },
+        { display: '\\hbar', label: 'hbar', insert: '\\hbar ' },
+        { display: '\\hat{H}', label: 'Hamiltonian operator', insert: '\\hat{H}' },
+        { display: '\\hat{p}', label: 'momentum operator', insert: '\\hat{p}' },
+        { display: '\\hat{x}', label: 'position operator', insert: '\\hat{x}' },
+        { display: '\\nabla^{2}', label: 'Laplacian', insert: '\\nabla^{2}' },
+        { display: '\\partial_t', label: 'time derivative', insert: '\\partial_t ' },
+        { display: '\\sigma_z', label: 'Pauli z', insert: '\\sigma_z' },
+        { display: '\\rho', label: 'density matrix', insert: '\\rho ' },
+        { display: '\\Tr', label: 'trace', insert: '\\Tr ' },
+        { display: '\\otimes', label: 'tensor product', insert: '\\otimes ' },
+        { display: '\\dagger', label: 'adjoint', insert: '^{\\dagger}' },
+        { display: '\\mathbb{1}', label: 'identity', insert: '\\mathbb{1}' }
       ]
     },
     {
@@ -2284,7 +2367,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       if (!tex) return;
       if (window.katex) {
         try {
-          el.innerHTML = window.katex.renderToString(tex, Object.assign({}, KATEX_BASE, {
+          el.innerHTML = window.katex.renderToString(expandPhysicsMacros(tex), Object.assign({}, KATEX_BASE, {
             displayMode: false
           }));
         } catch (_) {
@@ -2302,7 +2385,8 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       insert: item.insert,
       label: item.label || item.display || item.insert,
       display: item.display || '',
-      icon: item.icon || ''
+      icon: item.icon || '',
+      text: item.text || ''
     };
     const list = readRecent().filter((entryItem) => entryItem.insert !== entry.insert);
     list.unshift(entry);
@@ -2331,6 +2415,10 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       if (item.icon) {
         return '<button ' + base + '><i data-lucide="' + item.icon + '"></i></button>';
       }
+      if (item.text) {
+        return '<button ' + base + '><span class="sym-label sym-text">' +
+          escapeHtml(item.text) + '</span></button>';
+      }
       return '<button ' + base + '><span class="sym-math" data-math="' +
         escapeHtml(item.display || item.insert) + '"></span></button>';
     }).join('');
@@ -2350,6 +2438,14 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
           const haystack = escapeHtml(
             ((item.label || '') + ' ' + (item.insert || '')).toLowerCase()
           );
+          if (item.text) {
+            return (
+              '<button type="button" class="sym-btn has-label" data-group="' + group.id +
+              '" data-index="' + index + '" data-tip="' + tip + '" data-search="' + haystack +
+              '" title="' + tip + '" aria-label="Insert ' + label + '">' +
+              '<span class="sym-label sym-text">' + escapeHtml(item.text) + '</span></button>'
+            );
+          }
           if (item.icon) {
             return (
               '<button type="button" class="sym-btn has-label" data-group="' + group.id +
