@@ -210,7 +210,9 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
         ['\\pi', 'pi'], ['\\rho', 'rho'], ['\\sigma', 'sigma'], ['\\tau', 'tau'],
         ['\\upsilon', 'upsilon'], ['\\phi', 'phi'], ['\\varphi', 'varphi'], ['\\chi', 'chi'],
         ['\\psi', 'psi'], ['\\omega', 'omega'], ['\\Gamma', 'Gamma'], ['\\Delta', 'Delta'],
-        ['\\Theta', 'Theta'], ['\\Lambda', 'Lambda'], ['\\Sigma', 'Sigma'], ['\\Omega', 'Omega']
+        ['\\Theta', 'Theta'], ['\\Lambda', 'Lambda'], ['\\Sigma', 'Sigma'], ['\\Omega', 'Omega'],
+        ['\\Xi', 'Xi'], ['\\Pi', 'Pi'], ['\\Upsilon', 'Upsilon'], ['\\Phi', 'Phi'], ['\\Psi', 'Psi'],
+        ['\\ell', 'ell'], ['\\aleph', 'aleph'], ['\\wp', 'wp'], ['\\Re', 'Re'], ['\\Im', 'Im']
       ].map(([cmd, label]) => ({ display: cmd, label, insert: cmd + ' ' }))
     },
     {
@@ -229,7 +231,35 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
         { display: '\\nabla', label: 'Nabla', insert: '\\nabla ' },
         { display: '\\infty', label: 'Infinity', insert: '\\infty ' },
         { display: '\\frac{a}{b}', label: 'Fraction', insert: '\\frac{' + CURSOR + '}{}' },
-        { display: '\\sqrt{x}', label: 'Square root', insert: '\\sqrt{' + CURSOR + '}' }
+        { display: '\\sqrt{x}', label: 'Square root', insert: '\\sqrt{' + CURSOR + '}' },
+        { display: '\\sin x', label: 'sine', insert: '\\sin ' },
+        { display: '\\cos x', label: 'cosine', insert: '\\cos ' },
+        { display: '\\tan x', label: 'tangent', insert: '\\tan ' },
+        { display: '\\log x', label: 'logarithm', insert: '\\log ' },
+        { display: '\\ln x', label: 'natural log', insert: '\\ln ' },
+        { display: '\\exp(x)', label: 'exponential', insert: '\\exp ' },
+        { display: '\\lim_{x\\to\\infty}', label: 'limit at infinity', insert: '\\lim_{x \\to \\infty} ' },
+        { display: '\\frac{d}{dx}', label: 'derivative', insert: '\\frac{d}{dx}' },
+        { display: '\\frac{\\partial}{\\partial x}', label: 'partial derivative', insert: '\\frac{\\partial}{\\partial x}' },
+        { display: '\\bigcup_{i=1}^{n}', label: 'big union', insert: '\\bigcup_{i=1}^{n} ' },
+        { display: '\\bigcap_{i=1}^{n}', label: 'big intersection', insert: '\\bigcap_{i=1}^{n} ' },
+        { display: '\\smallint', label: 'small integral', insert: '\\smallint ' }
+      ]
+    },
+    {
+      id: 'math',
+      title: 'Math building blocks',
+      icon: 'braces',
+      items: [
+        { display: 'x^2', label: 'Inline math', insert: '$' + CURSOR + '$' },
+        { display: '\\sum_{i=1}^{n} x_i', label: 'Display math', insert: '$$' + CURSOR + '$$' },
+        { display: '\\binom{n}{k}', label: 'Binomial', insert: '\\binom{' + CURSOR + '}{}' },
+        { display: '\\boxed{E=mc^2}', label: 'Boxed', insert: '\\boxed{' + CURSOR + '}' },
+        { display: '\\text{if } x>0', label: 'Text in math', insert: '\\text{' + CURSOR + '}' },
+        { display: '\\left(\\frac{a}{b}\\right)', label: 'Parentheses', insert: '\\left( ' + CURSOR + ' \\right)' },
+        { display: '\\overbrace{a+b}^{n}', label: 'Overbrace', insert: '\\overbrace{' + CURSOR + '}^{}' },
+        { display: '\\underbrace{a+b}_{n}', label: 'Underbrace', insert: '\\underbrace{' + CURSOR + '}_{}' },
+        { display: '\\cancel{x}', label: 'Cancel', insert: '\\cancel{' + CURSOR + '}' }
       ]
     },
     {
@@ -266,6 +296,21 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
           display: '\\begin{matrix}a&b\\\\c&d\\end{matrix}',
           label: 'matrix',
           insert: '\\begin{matrix}\n  a & b \\\\\n  c & d\n\\end{matrix}'
+        },
+        {
+          display: '\\begin{Bmatrix}a&b\\\\c&d\\end{Bmatrix}',
+          label: 'Bmatrix',
+          insert: '\\begin{Bmatrix}\n  a & b \\\\\n  c & d\n\\end{Bmatrix}'
+        },
+        {
+          display: '\\begin{Vmatrix}a&b\\\\c&d\\end{Vmatrix}',
+          label: 'Vmatrix',
+          insert: '\\begin{Vmatrix}\n  a & b \\\\\n  c & d\n\\end{Vmatrix}'
+        },
+        {
+          display: '\\begin{array}{cc}a&b\\\\c&d\\end{array}',
+          label: 'array',
+          insert: '\\begin{array}{cc}\n  a & b \\\\\n  c & d\n\\end{array}'
         }
       ]
     },
@@ -276,7 +321,12 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       items: [
         '\\leq', '\\geq', '\\neq', '\\approx', '\\equiv', '\\sim', '\\propto', '\\in',
         '\\notin', '\\subset', '\\subseteq', '\\cup', '\\cap', '\\forall', '\\exists',
-        '\\rightarrow', '\\Rightarrow', '\\leftrightarrow', '\\pm', '\\times', '\\cdot', '\\div'
+        '\\rightarrow', '\\Rightarrow', '\\leftrightarrow', '\\pm', '\\times', '\\cdot', '\\div',
+        '\\cong', '\\simeq', '\\asymp', '\\ll', '\\gg', '\\prec', '\\succ', '\\preceq',
+        '\\succeq', '\\subsetneq', '\\supset', '\\supseteq', '\\setminus', '\\emptyset',
+        '\\varnothing', '\\perp', '\\parallel', '\\nparallel', '\\vdash', '\\models',
+        '\\angle', '\\triangle', '\\therefore', '\\because', '\\mid', '\\nmid', '\\iff',
+        '\\uparrow', '\\downarrow', '\\Longleftrightarrow'
       ].map((cmd) => ({ display: cmd, label: cmd.slice(1), insert: cmd + ' ' }))
     },
     {
@@ -295,7 +345,25 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
         { display: '\\vec{v}', label: 'vector', insert: '\\vec{' + CURSOR + '}' },
         { display: '\\hat{x}', label: 'hat', insert: '\\hat{' + CURSOR + '}' },
         { display: '\\bra{\\psi}', label: 'bra', insert: '\\bra{' + CURSOR + '}' },
-        { display: '\\ket{\\psi}', label: 'ket', insert: '\\ket{' + CURSOR + '}' }
+        { display: '\\ket{\\psi}', label: 'ket', insert: '\\ket{' + CURSOR + '}' },
+        { display: '\\dagger', label: 'dagger', insert: '\\dagger ' },
+        { display: '\\ddagger', label: 'double dagger', insert: '\\ddagger ' },
+        { display: '\\otimes', label: 'tensor product', insert: '\\otimes ' },
+        { display: '\\oplus', label: 'direct sum', insert: '\\oplus ' },
+        { display: '\\langle', label: 'left angle', insert: '\\langle ' },
+        { display: '\\rangle', label: 'right angle', insert: '\\rangle ' },
+        { display: '\\lVert', label: 'norm bar', insert: '\\lVert ' },
+        { display: '\\mathcal{L}', label: 'Lagrangian', insert: '\\mathcal{L}' },
+        { display: '\\mathcal{H}', label: 'Hamiltonian', insert: '\\mathcal{H}' },
+        { display: '\\mathbb{R}', label: 'real numbers', insert: '\\mathbb{R}' },
+        { display: '\\vec{E}', label: 'electric field', insert: '\\vec{E}' },
+        { display: '\\vec{B}', label: 'magnetic field', insert: '\\vec{B}' },
+        { display: '\\dot{x}', label: 'time derivative', insert: '\\dot{x}' },
+        { display: '\\ddot{x}', label: 'second time derivative', insert: '\\ddot{x}' },
+        { display: '\\tilde{x}', label: 'tilde', insert: '\\tilde{x}' },
+        { display: '\\overline{x}', label: 'overline', insert: '\\overline{x}' },
+        { display: '\\epsilon_0', label: 'epsilon nought', insert: '\\epsilon_0' },
+        { display: '\\mu_0', label: 'mu nought', insert: '\\mu_0' }
       ]
     },
     {
@@ -328,7 +396,14 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
           insert: '\n\\begin{figure}[h]\n  \\centering\n  \\includegraphics[width=0.6\\textwidth]{' + CURSOR + '}\n  \\caption{A caption}\n\\end{figure}\n'
         },
         { icon: 'quote', label: 'Quote', insert: '\n\\begin{quote}\n  ' + CURSOR + '\n\\end{quote}\n' },
-        { icon: 'braces', label: 'Cases', insert: '\n\\begin{cases}\n  ' + CURSOR + ' & x > 0 \\\\\n  0 & \\text{otherwise}\n\\end{cases}\n' }
+        { icon: 'braces', label: 'Cases', insert: '\n\\begin{cases}\n  ' + CURSOR + ' & x > 0 \\\\\n  0 & \\text{otherwise}\n\\end{cases}\n' },
+        { icon: 'book-open', label: 'Theorem', insert: '\n\\begin{theorem}\n  ' + CURSOR + '\n\\end{theorem}\n' },
+        { icon: 'book-open', label: 'Definition', insert: '\n\\begin{definition}\n  ' + CURSOR + '\n\\end{definition}\n' },
+        { icon: 'check-circle-2', label: 'Proof', insert: '\n\\begin{proof}\n  ' + CURSOR + '\n\\end{proof}\n' },
+        { icon: 'list', label: 'Description', insert: '\n\\begin{description}\n  \\item[' + CURSOR + '] Definition\n\\end{description}\n' },
+        { icon: 'code-2', label: 'Verbatim', insert: '\n\\begin{verbatim}\n' + CURSOR + '\n\\end{verbatim}\n' },
+        { icon: 'sigma', label: 'Gather', insert: '\n\\begin{gather}\n  a = b \\\\\n  c = d\n\\end{gather}\n' },
+        { icon: 'sigma', label: 'Align (unnumbered)', insert: '\n\\begin{align*}\n  a &= b \\\\\n  c &= d\n\\end{align*}\n' }
       ]
     }
   ];
@@ -801,7 +876,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     text = text.replace(/\u0002(\d+)\u0002/g, (token, idx) =>
       slots[Number(idx)] !== undefined ? slots[Number(idx)] : ''
     );
-    return text.trim();
+    return text;
   }
 
   function renderProse(text, ctx) {
@@ -1544,26 +1619,30 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
         .map((item, index) => {
           const label = escapeHtml(item.label || item.display || '');
           const tip = escapeHtml(item.insert.replace(/\n/g, ' '));
+          const haystack = escapeHtml(
+            ((item.label || '') + ' ' + (item.insert || '')).toLowerCase()
+          );
           if (item.icon) {
             return (
               '<button type="button" class="sym-btn has-label" data-group="' + group.id +
-              '" data-index="' + index + '" data-tip="' + tip + '" title="' + tip +
-              '" aria-label="Insert ' + label + '">' +
+              '" data-index="' + index + '" data-tip="' + tip + '" data-search="' + haystack +
+              '" title="' + tip + '" aria-label="Insert ' + label + '">' +
               '<i data-lucide="' + item.icon + '"></i>' +
               '<span class="sym-label">' + label + '</span></button>'
             );
           }
           return (
             '<button type="button" class="sym-btn" data-group="' + group.id +
-            '" data-index="' + index + '" data-tip="' + tip + '" title="' + tip +
-            '" aria-label="Insert ' + label + '">' +
+            '" data-index="' + index + '" data-tip="' + tip + '" data-search="' + haystack +
+            '" title="' + tip + '" aria-label="Insert ' + label + '">' +
             '<span class="sym-math" data-math="' + escapeHtml(item.display) + '"></span></button>'
           );
         })
         .join('');
 
       return (
-        '<details class="sym-group" data-kind="' + group.id + '"' + (group.open ? ' open' : '') + '>' +
+        '<details class="sym-group" data-kind="' + group.id + '" data-default-open="' +
+        (group.open ? 'true' : 'false') + '"' + (group.open ? ' open' : '') + '>' +
         '<summary><span class="sym-title"><i data-lucide="' + group.icon + '"></i>' +
         escapeHtml(group.title) + '</span>' +
         '<span class="sym-count">' + group.items.length + '</span>' +
@@ -1598,6 +1677,20 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       const item = group.items[Number(button.dataset.index)];
       if (!item) return;
       insertSnippet(item.insert);
+    });
+  }
+
+  function filterSymbols(query) {
+    const q = String(query || '').trim().toLowerCase();
+    $$('.sym-group').forEach((group) => {
+      let matches = 0;
+      $$('.sym-btn', group).forEach((btn) => {
+        const show = !q || (btn.dataset.search || '').indexOf(q) !== -1;
+        btn.hidden = !show;
+        if (show) matches += 1;
+      });
+      group.hidden = matches === 0;
+      group.open = q ? matches > 0 : group.dataset.defaultOpen === 'true';
     });
   }
 
@@ -2198,7 +2291,14 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     $('#printBtn').addEventListener('click', printPreview);
     $('#downloadTexBtn').addEventListener('click', downloadTex);
     $('#copyBtn').addEventListener('click', copySource);
+    $('#wrapInlineBtn').addEventListener('click', () => insertSnippet('$' + CURSOR + '$'));
+    $('#wrapDisplayBtn').addEventListener('click', () => insertSnippet('$$' + CURSOR + '$$'));
     $('#nlpBtn').addEventListener('click', openNlp);
+
+    const symbolSearch = $('#symbolSearch');
+    if (symbolSearch) {
+      symbolSearch.addEventListener('input', () => filterSymbols(symbolSearch.value));
+    }
 
     $('#projectSelect').addEventListener('change', (event) => {
       openProject(event.target.value);

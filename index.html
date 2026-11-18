@@ -96,6 +96,11 @@
         </div>
         <span class="chip">LaTeX</span>
       </div>
+      <div class="sidebar-search">
+        <i data-lucide="search"></i>
+        <label class="visually-hidden" for="symbolSearch">Filter symbols</label>
+        <input id="symbolSearch" type="search" placeholder="Filter symbols…" autocomplete="off" spellcheck="false" />
+      </div>
       <div class="sidebar-scroll" id="symbolGroups"></div>
       <div class="sidebar-foot">
         <i data-lucide="save"></i>
@@ -111,6 +116,12 @@
           <span class="tab-dot" aria-hidden="true"></span>
         </div>
         <div class="pane-tools">
+          <button class="chip-btn math-wrap-btn" type="button" id="wrapInlineBtn" title="Wrap selection in inline math ($…$)">
+            <span class="mono">$x$</span>
+          </button>
+          <button class="chip-btn math-wrap-btn" type="button" id="wrapDisplayBtn" title="Wrap selection in display math ($$…$$)">
+            <span class="mono">$$x$$</span>
+          </button>
           <button class="chip-btn" type="button" id="downloadTexBtn" title="Download the .tex source">
             <i data-lucide="download"></i><span>.tex</span>
           </button>
