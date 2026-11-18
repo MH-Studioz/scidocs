@@ -198,6 +198,14 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     '\\comm': '[#1,#2]',
     '\\acomm': '\\{#1,#2\\}',
     '\\poissonbracket': '\\{#1,#2\\}',
+    '\\pb': '\\{#1,#2\\}',
+    '\\ev': '\\left\\langle #1\\right\\rangle',
+    '\\cross': '\\times',
+    '\\divergence': '\\nabla \\cdot',
+    '\\ang': '#1^{\\circ}',
+    '\\pu': '\\mathrm{#1}',
+    '\\set': '\\{#1\\}',
+    '\\Set': '\\left\\{#1\\right\\}',
     '\\expval': '\\left\\langle #1\\right\\rangle',
     '\\ketbra': '\\left|#1\\right\\rangle\\!\\left\\langle #2\\right|',
     '\\matrixel': '\\left\\langle #1\\,\\middle|\\,#2\\,\\middle|\\,#3\\right\\rangle',
@@ -902,6 +910,14 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
    *  physics-package conveniences: optional arguments and delimiters
    * ------------------------------------------------------------------ */
   const PHYSICS_SIZE = /\\(?:bigg|Bigg|big|Big)[lr]?/;
+  const SIZED_COMMANDS = [
+    { name: '\\abs', left: '\\left|', right: '\\right|' },
+    { name: '\\norm', left: '\\left\\lVert', right: '\\right\\rVert' },
+    { name: '\\pqty', left: '\\left(', right: '\\right)' },
+    { name: '\\bqty', left: '\\left[', right: '\\right]' },
+    { name: '\\vqty', left: '\\left|', right: '\\right|' },
+    { name: '\\Bqty', left: '\\left\\{', right: '\\right\\}' }
+  ];
 
   function skipTexSpace(tex, index) {
     let i = index;
@@ -1004,8 +1020,9 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     return parts.map(expandPhysicsMacros);
   }
 
-  function readDerivative(tex, index, partial) {
-    const name = partial ? '\\pdv' : '\\dv';
+  function readDerivative(tex, index, kind) {
+    const name = kind === 'partial' ? '\\pdv' : kind === 'delta' ? '\\fdv' : '\\dv';
+    const symbol = kind === 'partial' ? '\\partial' : kind === 'delta' ? '\\delta' : 'd';
     let i = skipTexSpace(tex, index + name.length);
     let order = '';
     if (tex[i] === '[') {
@@ -1023,26 +1040,21 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     const sup = order ? '^{' + order + '}' : '';
     const fn = expandPhysicsMacros(top.content);
     const variable = expandPhysicsMacros(bottom.content);
-    if (partial) {
-      if (tex[i] === '{') {
-        const second = readTexGroup(tex, i);
-        if (second) {
-          return {
-            html: '\\frac{\\partial^{2} ' + fn + '}{\\partial ' + variable +
-              ' \\partial ' + expandPhysicsMacros(second.content) + '}',
-            end: second.end
-          };
-        }
+    if (kind === 'partial' && tex[i] === '{') {
+      const second = readTexGroup(tex, i);
+      if (second) {
+        return {
+          html: '\\frac{\\partial^{2} ' + fn + '}{\\partial ' + variable +
+            ' \\partial ' + expandPhysicsMacros(second.content) + '}',
+          end: second.end
+        };
       }
-      return {
-        html: '\\frac{\\partial' + sup + ' ' + fn + '}{\\partial ' + variable + sup + '}',
-        end: i
-      };
     }
-    return {
-      html: '\\frac{d' + sup + ' ' + fn + '}{d' + variable + sup + '}',
-      end: i
-    };
+    const numerator = symbol + sup + ' ' + fn;
+    const denominator = symbol === 'd'
+      ? 'd' + variable + sup
+      : symbol + ' ' + variable + sup;
+    return { html: '\\frac{' + numerator + '}{' + denominator + '}', end: i };
   }
 
   function readQty(tex, index) {
@@ -1112,12 +1124,29 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
         continue;
       }
       if (tex.startsWith('\\dv', i) && !/[A-Za-z]/.test(tex[i + 3] || '')) {
-        const parsed = readDerivative(tex, i, false);
+        const parsed = readDerivative(tex, i, 'd');
         if (parsed) { out += parsed.html; i = parsed.end; continue; }
       }
       if (tex.startsWith('\\pdv', i) && !/[A-Za-z]/.test(tex[i + 4] || '')) {
-        const parsed = readDerivative(tex, i, true);
+        const parsed = readDerivative(tex, i, 'partial');
         if (parsed) { out += parsed.html; i = parsed.end; continue; }
+      }
+      if (tex.startsWith('\\fdv', i) && !/[A-Za-z]/.test(tex[i + 4] || '')) {
+        const parsed = readDerivative(tex, i, 'delta');
+        if (parsed) { out += parsed.html; i = parsed.end; continue; }
+      }
+      const sized = SIZED_COMMANDS.find((entry) => tex.startsWith(entry.name + '[', i));
+      if (sized) {
+        const opt = readTexBracket(tex, i + sized.name.length);
+        if (opt) {
+          const start = skipTexSpace(tex, opt.end);
+          const group = readTexGroup(tex, start);
+          if (group) {
+            out += sized.left + ' ' + expandPhysicsMacros(group.content) + ' ' + sized.right;
+            i = group.end;
+            continue;
+          }
+        }
       }
       if (tex.startsWith('\\qty', i) && !/[A-Za-z]/.test(tex[i + 4] || '')) {
         const parsed = readQty(tex, i);
