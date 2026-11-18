@@ -330,6 +330,87 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       ].map((cmd) => ({ display: cmd, label: cmd.slice(1), insert: cmd + ' ' }))
     },
     {
+      id: 'sets',
+      title: 'Sets & logic',
+      icon: 'layers',
+      items: [
+        { display: '\\neg p', label: 'not', insert: '\\neg ' },
+        { display: 'p \\land q', label: 'and', insert: '\\land ' },
+        { display: 'p \\lor q', label: 'or', insert: '\\lor ' },
+        { display: 'p \\veebar q', label: 'exclusive or', insert: '\\veebar ' },
+        { display: '\\top', label: 'tautology (top)', insert: '\\top ' },
+        { display: '\\bot', label: 'contradiction (bottom)', insert: '\\bot ' },
+        { display: '\\nexists', label: 'does not exist', insert: '\\nexists ' },
+        { display: '\\vDash', label: 'models', insert: '\\vDash ' },
+        { display: '\\Vdash', label: 'forces', insert: '\\Vdash ' },
+        { display: '\\nvdash', label: 'does not prove', insert: '\\nvdash ' },
+        { display: '\\nvDash', label: 'does not model', insert: '\\nvDash ' },
+        { display: '\\uplus', label: 'multiset union', insert: '\\uplus ' },
+        { display: '\\sqcup', label: 'disjoint union', insert: '\\sqcup ' },
+        { display: '\\sqcap', label: 'disjoint intersection', insert: '\\sqcap ' },
+        { display: '\\bigsqcup', label: 'big disjoint union', insert: '\\bigsqcup ' },
+        { display: '\\bigoplus', label: 'big direct sum', insert: '\\bigoplus ' },
+        { display: '\\bigotimes', label: 'big tensor product', insert: '\\bigotimes ' },
+        { display: '\\bigodot', label: 'big circled dot', insert: '\\bigodot ' },
+        { display: '\\bigvee', label: 'big or', insert: '\\bigvee ' },
+        { display: '\\bigwedge', label: 'big and', insert: '\\bigwedge ' },
+        { display: '\\coprod', label: 'coproduct', insert: '\\coprod ' },
+        { display: '\\smallsetminus', label: 'small set minus', insert: '\\smallsetminus ' },
+        { display: '\\complement', label: 'complement', insert: '\\complement ' },
+        { display: '\\subseteqq', label: 'subset or equal (double)', insert: '\\subseteqq ' },
+        { display: '\\supseteqq', label: 'superset or equal (double)', insert: '\\supseteqq ' },
+        { display: '\\subsetneqq', label: 'proper subset (strict)', insert: '\\subsetneqq ' },
+        { display: '\\supsetneqq', label: 'proper superset (strict)', insert: '\\supsetneqq ' },
+        { display: '\\nsubseteq', label: 'not a subset or equal', insert: '\\nsubseteq ' },
+        { display: '\\nsupseteq', label: 'not a superset or equal', insert: '\\nsupseteq ' },
+        { display: '\\mathcal{P}(S)', label: 'power set', insert: '\\mathcal{P}(' + CURSOR + ')' },
+        { display: '\\left|A\\right|', label: 'cardinality', insert: '\\left| ' + CURSOR + ' \\right|' },
+        { display: '\\aleph_0', label: 'aleph nought', insert: '\\aleph_0' },
+        { display: '\\mathfrak{c}', label: 'cardinality of the continuum', insert: '\\mathfrak{c}' },
+        { display: '\\triangleq', label: 'defined as', insert: '\\triangleq ' }
+      ]
+    },
+    {
+      id: 'arrows',
+      title: 'Arrows',
+      icon: 'arrow-right',
+      items: [
+        ['\\rightarrow', 'right'], ['\\leftarrow', 'left'], ['\\leftrightarrow', 'left-right'],
+        ['\\Rightarrow', 'implies'], ['\\Leftarrow', 'implied by'], ['\\Leftrightarrow', 'iff'],
+        ['\\longrightarrow', 'long right'], ['\\longleftarrow', 'long left'],
+        ['\\longleftrightarrow', 'long left-right'], ['\\Longrightarrow', 'long implies'],
+        ['\\Longleftarrow', 'long implied by'], ['\\Longleftrightarrow', 'long iff'],
+        ['\\mapsto', 'maps to'], ['\\longmapsto', 'long maps to'],
+        ['\\hookrightarrow', 'hook right'], ['\\hookleftarrow', 'hook left'],
+        ['\\nearrow', 'up-right'], ['\\searrow', 'down-right'],
+        ['\\swarrow', 'down-left'], ['\\nwarrow', 'up-left'],
+        ['\\uparrow', 'up'], ['\\downarrow', 'down'], ['\\updownarrow', 'up-down'],
+        ['\\Uparrow', 'double up'], ['\\Downarrow', 'double down'], ['\\Updownarrow', 'double up-down'],
+        ['\\rightharpoonup', 'right harpoon up'], ['\\rightharpoondown', 'right harpoon down'],
+        ['\\leftharpoonup', 'left harpoon up'], ['\\leftharpoondown', 'left harpoon down'],
+        ['\\rightleftharpoons', 'equilibrium'], ['\\leftrightharpoons', 'reverse equilibrium'],
+        ['\\rightrightarrows', 'two right'], ['\\leftleftarrows', 'two left'],
+        ['\\rightleftarrows', 'right then left'], ['\\leftrightarrows', 'left then right'],
+        ['\\twoheadrightarrow', 'two-headed right'], ['\\twoheadleftarrow', 'two-headed left'],
+        ['\\rightarrowtail', 'right tail'], ['\\leftarrowtail', 'left tail'],
+        ['\\dashrightarrow', 'dashed right'], ['\\dashleftarrow', 'dashed left'],
+        ['\\circlearrowleft', 'anticlockwise'], ['\\circlearrowright', 'clockwise'],
+        ['\\curvearrowleft', 'curve left'], ['\\curvearrowright', 'curve right'],
+        ['\\looparrowleft', 'loop left'], ['\\looparrowright', 'loop right'],
+        ['\\rightsquigarrow', 'squiggle right'], ['\\multimap', 'multimap'],
+        ['\\xrightarrow{abc}', 'labelled right'], ['\\xleftarrow{abc}', 'labelled left'],
+        ['\\implies', 'implies (spaced)'], ['\\impliedby', 'implied by (spaced)'],
+        ['\\nleftarrow', 'not left'], ['\\nrightarrow', 'not right'],
+        ['\\nLeftarrow', 'not implied by'], ['\\nRightarrow', 'not implies'],
+        ['\\nleftrightarrow', 'not left-right'], ['\\nLeftrightarrow', 'not iff'],
+        ['\\Lsh', 'left shift'], ['\\Rsh', 'right shift']
+      ].map(([cmd, label]) => ({
+        display: cmd,
+        label,
+        insert: cmd.indexOf('{') !== -1 ? cmd.replace('{abc}', '{' + CURSOR + '}') : cmd + ' '
+      }))
+    },
+    {
       id: 'physics',
       title: 'Physics & vectors',
       icon: 'atom',
@@ -1610,6 +1691,81 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
   /* ------------------------------------------------------------------ *
    *  Symbol lab
    * ------------------------------------------------------------------ */
+  const RECENT_KEY = 'latex-lab-recent-symbols-v1';
+  const RECENT_LIMIT = 8;
+
+  function readRecent() {
+    try {
+      const list = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+      return Array.isArray(list)
+        ? list.filter((item) => item && typeof item.insert === 'string' && item.insert).slice(0, RECENT_LIMIT)
+        : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function typesetSymbolMath(root) {
+    if (!root) return;
+    $$('[data-math]', root).forEach((el) => {
+      const tex = el.getAttribute('data-math');
+      if (!tex) return;
+      if (window.katex) {
+        try {
+          el.innerHTML = window.katex.renderToString(tex, Object.assign({}, KATEX_BASE, {
+            displayMode: false
+          }));
+        } catch (_) {
+          el.textContent = tex;
+        }
+      } else {
+        el.textContent = tex;
+      }
+    });
+  }
+
+  function rememberSymbol(item) {
+    if (!item || !item.insert) return;
+    const entry = {
+      insert: item.insert,
+      label: item.label || item.display || item.insert,
+      display: item.display || '',
+      icon: item.icon || ''
+    };
+    const list = readRecent().filter((entryItem) => entryItem.insert !== entry.insert);
+    list.unshift(entry);
+    try {
+      localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_LIMIT)));
+    } catch (_) { /* storage may be unavailable */ }
+    renderRecent();
+  }
+
+  function renderRecent() {
+    const panel = $('#recentPanel');
+    const grid = $('#recentSymbols');
+    if (!panel || !grid) return;
+    const items = readRecent();
+    const search = $('#symbolSearch');
+    panel.hidden = items.length === 0 || !!(search && search.value.trim());
+    if (!items.length) {
+      grid.innerHTML = '';
+      return;
+    }
+    grid.innerHTML = items.map((item, index) => {
+      const tip = escapeHtml(String(item.insert).replace(/\n/g, ' '));
+      const label = escapeHtml(item.label || item.insert);
+      const base = 'type="button" class="sym-btn" data-recent-index="' + index +
+        '" data-tip="' + tip + '" title="' + tip + '" aria-label="Insert ' + label + '"';
+      if (item.icon) {
+        return '<button ' + base + '><i data-lucide="' + item.icon + '"></i></button>';
+      }
+      return '<button ' + base + '><span class="sym-math" data-math="' +
+        escapeHtml(item.display || item.insert) + '"></span></button>';
+    }).join('');
+    typesetSymbolMath(grid);
+    refreshIcons();
+  }
+
   function renderSymbols() {
     const host = $('#symbolGroups');
     if (!host) return;
@@ -1652,22 +1808,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     }).join('');
 
     refreshIcons();
-
-    $$('[data-math]', host).forEach((el) => {
-      const tex = el.getAttribute('data-math');
-      if (!tex) return;
-      if (window.katex) {
-        try {
-          el.innerHTML = window.katex.renderToString(tex, Object.assign({}, KATEX_BASE, {
-            displayMode: false
-          }));
-        } catch (_) {
-          el.textContent = tex;
-        }
-      } else {
-        el.textContent = tex;
-      }
-    });
+    typesetSymbolMath(host);
 
     host.addEventListener('click', (event) => {
       const button = event.target.closest('.sym-btn');
@@ -1677,6 +1818,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       const item = group.items[Number(button.dataset.index)];
       if (!item) return;
       insertSnippet(item.insert);
+      rememberSymbol(item);
     });
   }
 
@@ -1692,6 +1834,8 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       group.hidden = matches === 0;
       group.open = q ? matches > 0 : group.dataset.defaultOpen === 'true';
     });
+    const recent = $('#recentPanel');
+    if (recent) recent.hidden = !!q || readRecent().length === 0;
   }
 
   /* ------------------------------------------------------------------ *
@@ -2299,6 +2443,19 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     if (symbolSearch) {
       symbolSearch.addEventListener('input', () => filterSymbols(symbolSearch.value));
     }
+
+    const recentGrid = $('#recentSymbols');
+    if (recentGrid) {
+      recentGrid.addEventListener('click', (event) => {
+        const button = event.target.closest('.sym-btn');
+        if (!button) return;
+        const item = readRecent()[Number(button.dataset.recentIndex)];
+        if (!item) return;
+        insertSnippet(item.insert);
+        rememberSymbol(item);
+      });
+    }
+    renderRecent();
 
     $('#projectSelect').addEventListener('change', (event) => {
       openProject(event.target.value);

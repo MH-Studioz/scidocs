@@ -594,6 +594,33 @@ body.sidebar-collapsed .sidebar {
   cursor: pointer;
 }
 
+.recent-panel {
+  padding: 6px 4px 4px;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+}
+
+.recent-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.recent-title svg {
+  width: 12px;
+  height: 12px;
+  color: var(--primary-hi);
+}
+
+.recent-panel .sym-grid {
+  padding: 0 2px 6px;
+}
+
 .sidebar-scroll {
   flex: 1 1 auto;
   min-height: 0;
