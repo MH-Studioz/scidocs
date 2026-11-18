@@ -18,7 +18,7 @@
   <!-- Rendering engines -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css" />
-  <link rel="stylesheet" href="styles.css?v=23" />
+  <link rel="stylesheet" href="styles.css?v=25" />
 
   <script defer src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
@@ -29,7 +29,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/closebrackets.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/selection/active-line.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
-  <script defer src="app.js?v=23"></script>
+  <script defer src="app.js?v=25"></script>
 </head>
 
 <body class="app">
@@ -231,7 +231,7 @@
             <span class="ai-state" id="aiState">optional</span>
           </summary>
           <div class="ai-config-body">
-            <p class="hint">Bring your own <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter key</a>. It is stored only in this browser and sent directly to the provider — SciDocs has no backend. AI calls use your provider credits.</p>
+            <p class="hint">Bring your own <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter key</a>, or point the base URL at any OpenAI-compatible provider. The key is stored only in this browser and sent directly to that provider — SciDocs has no backend. AI calls use your provider credits.</p>
             <label class="field-label" for="aiKey">API key</label>
             <input id="aiKey" class="field mono" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-…" />
             <div class="ai-config-grid">
@@ -244,6 +244,13 @@
                 <input id="aiBase" class="field mono" type="text" autocomplete="off" spellcheck="false" />
               </div>
             </div>
+            <label class="ai-auto">
+              <input type="checkbox" id="aiAuto" />
+              <span>
+                Auto refine while typing
+                <small>Waits until you pause. Uses provider credits.</small>
+              </span>
+            </label>
             <div class="ai-config-actions">
               <button class="btn btn-ghost" type="button" id="aiSave">Save key</button>
               <button class="btn btn-ghost" type="button" id="aiClear">Clear</button>

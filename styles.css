@@ -1927,6 +1927,29 @@ body.sidebar-collapsed .sidebar {
 
 .ai-config-grid .field { margin-bottom: 8px; }
 
+.ai-auto {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 0 10px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.ai-auto input {
+  margin: 1px 0 0;
+  accent-color: var(--primary);
+}
+
+.ai-auto small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted-2);
+  font-size: 10px;
+}
+
 .ai-config-actions {
   display: flex;
   align-items: center;

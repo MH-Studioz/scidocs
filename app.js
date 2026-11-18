@@ -2914,7 +2914,8 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
   const AI_DEFAULTS = {
     apiKey: '',
     model: 'google/gemini-3.5-flash-lite',
-    baseUrl: 'https://openrouter.ai/api/v1'
+    baseUrl: 'https://openrouter.ai/api/v1',
+    auto: true
   };
   const AI_SYSTEM_PROMPT =
     'You convert plain-English mathematics into one LaTeX math expression. ' +
@@ -2932,7 +2933,8 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
           model: typeof raw.model === 'string' && raw.model.trim() ? raw.model.trim() : AI_DEFAULTS.model,
           baseUrl: typeof raw.baseUrl === 'string' && raw.baseUrl.trim()
             ? raw.baseUrl.trim().replace(/\/+$/, '')
-            : AI_DEFAULTS.baseUrl
+            : AI_DEFAULTS.baseUrl,
+          auto: raw.auto !== false
         };
       }
     } catch (_) { /* storage may be unavailable */ }
@@ -2950,10 +2952,16 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     const model = $('#aiModel');
     const base = $('#aiBase');
     const state = $('#aiState');
+    const auto = $('#aiAuto');
     if (key) key.value = aiConfig.apiKey;
     if (model) model.value = aiConfig.model;
     if (base) base.value = aiConfig.baseUrl;
-    if (state) state.textContent = aiConfig.apiKey ? 'key saved' : 'optional';
+    if (auto) auto.checked = Boolean(aiConfig.auto);
+    if (state) {
+      state.textContent = aiConfig.apiKey
+        ? (aiConfig.auto ? 'auto on' : 'key saved')
+        : 'optional';
+    }
   }
 
   function cleanAiLatex(value) {
@@ -2967,7 +2975,43 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     return s;
   }
 
-  async function refineNlpWithAi() {
+  let aiRefineTimer = null;
+  let aiRequestController = null;
+  let aiRequestToken = 0;
+  let lastAiText = '';
+
+  function cancelAiRefine() {
+    clearTimeout(aiRefineTimer);
+    aiRefineTimer = null;
+    if (aiRequestController) {
+      const controller = aiRequestController;
+      aiRequestController = null;
+      controller.abort();
+    }
+    aiRequestToken += 1;
+    const button = $('#nlpAi');
+    if (button) {
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
+    }
+  }
+
+  function scheduleAiRefine() {
+    clearTimeout(aiRefineTimer);
+    aiRefineTimer = null;
+    if (!aiConfig.auto || !aiConfig.apiKey) return;
+    const input = $('#nlpInput');
+    if (!input) return;
+    const text = input.value.trim();
+    if (text.length < 3 || text === lastAiText) return;
+    aiRefineTimer = setTimeout(() => {
+      aiRefineTimer = null;
+      refineNlpWithAi({ auto: true });
+    }, 1000);
+  }
+
+  async function refineNlpWithAi(options) {
+    const auto = Boolean(options && options.auto);
     const input = $('#nlpInput');
     const output = $('#nlpOutput');
     const note = $('#nlpNote');
@@ -2975,8 +3019,12 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     if (!input || !output) return;
     const text = input.value.trim();
     if (!text) { input.focus(); return; }
+    clearTimeout(aiRefineTimer);
+    aiRefineTimer = null;
+    if (auto && !aiConfig.auto) return;
 
     if (!aiConfig.apiKey) {
+      if (auto) return;
       const config = $('#aiConfig');
       if (config) config.open = true;
       const keyField = $('#aiKey');
@@ -2990,6 +3038,11 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     }
 
     const draft = naturalToLatex(text);
+    if (aiRequestController) aiRequestController.abort();
+    const controller = new AbortController();
+    aiRequestController = controller;
+    const token = ++aiRequestToken;
+    let timedOut = false;
     if (button) { button.disabled = true; button.setAttribute('aria-busy', 'true'); }
     if (note) {
       note.classList.remove('is-warn', 'is-ai');
@@ -2997,8 +3050,10 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       note.textContent = 'asking AI…';
     }
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 30000);
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 30000);
     try {
       const base = aiConfig.baseUrl.replace(/\/+$/, '');
       const response = await fetch(base + '/chat/completions', {
@@ -3046,7 +3101,10 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       if (window.katex) {
         window.katex.renderToString(latex, { throwOnError: true, strict: false, macros: MACROS });
       }
+      if (token !== aiRequestToken) return;
+      if (input.value.trim() !== text) return;
 
+      lastAiText = text;
       output.textContent = latex;
       if (note) {
         note.classList.remove('is-warn', 'is-busy');
@@ -3054,17 +3112,27 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
         note.textContent = 'AI refined · ' + aiConfig.model;
       }
     } catch (err) {
+      if (token !== aiRequestToken) return;
+      if (err && err.name === 'AbortError' && !timedOut) return;
       if (note) {
         note.classList.remove('is-busy', 'is-ai');
         note.classList.add('is-warn');
-        const message = err && err.name === 'AbortError'
-          ? 'AI request timed out'
-          : (err && err.message ? err.message : 'AI request failed');
-        note.textContent = message.length > 90 ? message.slice(0, 87) + '…' : message;
+        if (auto) {
+          note.textContent = 'AI unavailable · local draft';
+        } else {
+          const message = timedOut
+            ? 'AI request timed out'
+            : (err && err.message ? err.message : 'AI request failed');
+          note.textContent = message.length > 90 ? message.slice(0, 87) + '…' : message;
+        }
       }
     } finally {
       clearTimeout(timer);
-      if (button) { button.disabled = false; button.removeAttribute('aria-busy'); }
+      if (aiRequestController === controller) aiRequestController = null;
+      if (button && token === aiRequestToken) {
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+      }
     }
   }
 
@@ -3503,12 +3571,16 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       chip.addEventListener('click', () => {
         nlpInput.value = example;
         updateNlpOutput();
+        scheduleAiRefine();
         nlpInput.focus();
       });
       examplesHost.appendChild(chip);
     });
 
-    nlpInput.addEventListener('input', updateNlpOutput);
+    nlpInput.addEventListener('input', () => {
+      updateNlpOutput();
+      scheduleAiRefine();
+    });
     nlpInput.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
@@ -3536,7 +3608,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
         if ($('#aiConfigNote')) $('#aiConfigNote').textContent = 'Base URL must start with https://';
         return;
       }
-      aiConfig = { apiKey: key, model: model, baseUrl: base };
+      aiConfig = { apiKey: key, model: model, baseUrl: base, auto: aiConfig.auto };
       persistAiConfig();
       syncAiFields();
       if ($('#aiConfigNote')) {
@@ -3545,10 +3617,24 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     });
     const aiClear = $('#aiClear');
     if (aiClear) aiClear.addEventListener('click', () => {
-      aiConfig = { apiKey: '', model: aiConfig.model, baseUrl: aiConfig.baseUrl };
+      cancelAiRefine();
+      aiConfig = { apiKey: '', model: aiConfig.model, baseUrl: aiConfig.baseUrl, auto: aiConfig.auto };
       persistAiConfig();
       syncAiFields();
+      updateNlpOutput();
       if ($('#aiConfigNote')) $('#aiConfigNote').textContent = 'Key cleared.';
+    });
+    const aiAuto = $('#aiAuto');
+    if (aiAuto) aiAuto.addEventListener('change', () => {
+      aiConfig.auto = aiAuto.checked;
+      persistAiConfig();
+      syncAiFields();
+      if (aiConfig.auto) {
+        scheduleAiRefine();
+      } else {
+        cancelAiRefine();
+        updateNlpOutput();
+      }
     });
 
     /* modal dismissal */
