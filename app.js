@@ -28,6 +28,12 @@
       "'": '&#39;'
     }[ch]));
 
+  const safeHref = (url) => {
+    const value = String(url || '').trim();
+    if (!value) return '#';
+    return /^(https?:|mailto:|#|\/|\.\.?\/)/i.test(value) ? value : '#';
+  };
+
   const debounce = (fn, wait) => {
     let timer = null;
     return (...args) => {
@@ -533,6 +539,9 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       items: [
         { text: '♂', label: 'male', insert: '\\male ' },
         { text: '♀', label: 'female', insert: '\\female ' },
+        { display: '\\dna{ATGC}', label: 'DNA sequence', insert: '\\dna{' + CURSOR + '}' },
+        { display: '\\rna{AUGC}', label: 'RNA sequence', insert: '\\rna{' + CURSOR + '}' },
+        { display: '\\dnac{ATGC}', label: 'Complementary strand', insert: '\\dnac{' + CURSOR + '}' },
         { display: '5^{\\prime} \\to 3^{\\prime}', label: 'DNA direction', insert: "5'-" + CURSOR + "-3'" },
         { display: '\\text{DNA}', label: 'DNA', insert: '\\text{DNA}' },
         { display: '\\text{RNA}', label: 'RNA', insert: '\\text{RNA}' },
@@ -946,7 +955,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     proof: 'Proof'
   };
 
-  const BLOCK_RE = /\\begin\s*\{([A-Za-z*]+)\}|\\(maketitle|tableofcontents|newpage|clearpage|pagebreak|hrule|hrulefill)\b|\\(chapter|section|subsection|subsubsection|paragraph|subparagraph)(\*?)\s*\{/g;
+  const BLOCK_RE = /\\begin\s*\{([A-Za-z*]+)\}|\\(maketitle|tableofcontents|newpage|clearpage|pagebreak|hrule|hrulefill)\b|\\(chapter|section|subsection|subsubsection|paragraph|subparagraph)(\*?)\s*(?:\[[^\]]*\]\s*)?\{/g;
 
   function makeCtx(meta) {
     return {
@@ -1198,6 +1207,42 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     return {
       html: '\\left' + openTex + ' ' + expandPhysicsMacros(content) + ' \\right' + closeTex,
       end: found.end
+    };
+  }
+
+  function sequenceHtml(input, complement, rna) {
+    let value = String(input || '').replace(/[^A-Za-z\s]/g, '').toUpperCase();
+    value = rna ? value.replace(/T/g, 'U') : value.replace(/U/g, 'T');
+    if (complement) {
+      const pairs = rna ? { A: 'U', U: 'A', C: 'G', G: 'C' } : { A: 'T', T: 'A', C: 'G', G: 'C' };
+      value = value.split('').map((ch) => pairs[ch] || ch).join('');
+    }
+    const left = complement ? '3' : '5';
+    const right = complement ? '5' : '3';
+    return '<span class="doc-dna"><span class="doc-dna-end">' + left + '′</span>' +
+      '<code class="mono">' + escapeHtml(value) + '</code>' +
+      '<span class="doc-dna-end">' + right + '′</span></span>';
+  }
+
+  function readSequence(tex, index, kind) {
+    const start = skipTexSpace(tex, index + kind.length + 1);
+    const group = readTexGroup(tex, start);
+    if (!group) return null;
+    const complement = kind === 'dnac' || kind === 'rnac';
+    const rna = kind === 'rna' || kind === 'rnac';
+    let value = group.content.replace(/[^A-Za-z\s]/g, '').toUpperCase();
+    value = rna ? value.replace(/T/g, 'U') : value.replace(/U/g, 'T');
+    if (!value.trim()) return null;
+    if (complement) {
+      const pairs = rna ? { A: 'U', U: 'A', C: 'G', G: 'C' } : { A: 'T', T: 'A', C: 'G', G: 'C' };
+      value = value.split('').map((ch) => pairs[ch] || ch).join('');
+    }
+    const left = complement ? '3' : '5';
+    const right = complement ? '5' : '3';
+    return {
+      html: '\\text{' + left + '}^{\\prime}\\text{-}\\texttt{' + value +
+        '}\\text{-}\\text{' + right + '}^{\\prime}',
+      end: group.end
     };
   }
 
@@ -1459,6 +1504,13 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
           continue;
         }
       }
+      const seqKind = ['dnac', 'rnac', 'dna', 'rna'].find((name) =>
+        tex.startsWith('\\' + name, i) && !/[A-Za-z]/.test(tex[i + name.length + 1] || '')
+      );
+      if (seqKind) {
+        const parsed = readSequence(tex, i, seqKind);
+        if (parsed) { out += parsed.html; i = parsed.end; continue; }
+      }
       if (tex.startsWith('\\braket', i) && !/[A-Za-z]/.test(tex[i + 7] || '')) {
         const start = skipTexSpace(tex, i + 7);
         const group = readTexGroup(tex, start);
@@ -1496,7 +1548,8 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     }
     try {
       const html = window.katex.renderToString(clean, Object.assign({}, KATEX_BASE, {
-        displayMode: Boolean(display)
+        displayMode: Boolean(display),
+        macros: Object.assign({}, MACROS, (ctx && ctx.macros) || {})
       }));
       if (ctx && (html.indexOf('katex-error') >= 0 || html.indexOf('mathcolor="#DC2626"') >= 0) &&
         ctx.warnings.length < 4) {
@@ -1555,6 +1608,10 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       footnote: (a) => hold('<sup class="doc-footnote">' + inline(a) + '</sup>'),
       cite: (a) => hold('<span class="doc-cite">[' + escapeHtml(a) + ']</span>'),
       citep: (a) => hold('<span class="doc-cite">(' + escapeHtml(a) + ')</span>'),
+      dna: (a) => hold(sequenceHtml(a, false, false)),
+      rna: (a) => hold(sequenceHtml(a, false, true)),
+      dnac: (a) => hold(sequenceHtml(a, true, false)),
+      rnac: (a) => hold(sequenceHtml(a, true, true)),
       ref: (a) => hold('<span class="doc-ref">' + escapeHtml(a) + '</span>'),
       eqref: (a) => hold('<span class="doc-ref">(' + escapeHtml(a) + ')</span>'),
       label: () => hold(''),
@@ -1562,6 +1619,17 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     };
 
     let text = processCommands(String(raw), map);
+
+    text = text.replace(/\\href\{([^{}]*)\}\{([^{}]*)\}/g, (match, url, label) =>
+      hold('<a class="doc-link" href="' + escapeHtml(safeHref(url)) +
+        '" target="_blank" rel="noopener">' + inline(label) + '</a>')
+    );
+    text = text.replace(/\\url\{([^{}]*)\}/g, (match, url) =>
+      hold('<a class="doc-link mono" href="' + escapeHtml(safeHref(url)) +
+        '" target="_blank" rel="noopener">' + escapeHtml(url) + '</a>')
+    );
+    text = text.replace(/\\male(?![A-Za-z])/g, () => hold('♂'));
+    text = text.replace(/\\female(?![A-Za-z])/g, () => hold('♀'));
 
     text = text.replace(
       /\\(noindent|centering|raggedright|raggedleft|hfill|vfill|bigskip|medskip|smallskip|newpage|clearpage|pagebreak|linebreak|nopagebreak|break|small|footnotesize|scriptsize|normalsize|large|Large|LARGE|huge|Huge|bfseries|itshape|slshape|scshape|mdseries|upshape|rmfamily|sffamily|ttfamily|protect|relax)\b/g,
@@ -1580,6 +1648,9 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     text = text.replace(/\\[&%$#_{}]/g, (token) => hold(escapeHtml(token[1])));
     text = text.replace(/[ \t]*\n[ \t]*/g, ' ');
     text = text.replace(/[ \t]{2,}/g, ' ');
+    text = text.replace(/---/g, '\u2014').replace(/--/g, '\u2013');
+    text = text.replace(/``/g, '\u201C').replace(/''/g, '\u201D');
+    text = text.replace(/~/g, '\u00A0');
 
     /* chemistry written outside math mode, e.g. "water is \ce{H2O}" */
     let withChem = '';
@@ -1745,6 +1816,14 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     if (specMatch) {
       spec = specMatch[1];
       rest = rest.slice(specMatch[0].length);
+      /* \begin{tabular*}{width}{cols} */
+      if (!/[lcr]/.test(spec)) {
+        const secondSpec = /^\s*\{([^}]*)\}/.exec(rest);
+        if (secondSpec) {
+          spec = secondSpec[1];
+          rest = rest.slice(secondSpec[0].length);
+        }
+      }
     }
     rest = rest
       .replace(/\\(hline|toprule|midrule|bottomrule|addlinespace|endhead|endfirsthead)\b/g, '')
@@ -1761,9 +1840,21 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
         const cells = row.split(/(?<!\\)&/);
         const tds = cells
           .map((cell, idx) => {
-            const align = aligns[idx] === 'l' ? 'ta-l' : aligns[idx] === 'r' ? 'ta-r' : 'ta-c';
+            const rawCell = cell.trim();
+            let align = aligns[idx] === 'l' ? 'ta-l' : aligns[idx] === 'r' ? 'ta-r' : 'ta-c';
+            let colspan = 1;
+            let content = rawCell;
+            const span = /^\\multicolumn\s*\{(\d+)\}\s*\{([^}]*)\}\s*\{([\s\S]*)\}$/.exec(rawCell);
+            if (span) {
+              colspan = Math.max(1, parseInt(span[1], 10) || 1);
+              content = span[3];
+              const specAlign = span[2].replace(/[^lcr]/g, '')[0];
+              if (specAlign) align = specAlign === 'l' ? 'ta-l' : specAlign === 'r' ? 'ta-r' : 'ta-c';
+            }
+            content = content.replace(/\\multirow\s*\{[^}]*\}\s*\{[^}]*\}\s*\{([\s\S]*)\}/g, '$1');
             return (
-              '<td class="' + align + '">' + renderInline(cell.trim(), ctx) + '</td>'
+              '<td class="' + align + '"' + (colspan > 1 ? ' colspan="' + colspan + '"' : '') + '>' +
+              renderInline(content, ctx) + '</td>'
             );
           })
           .join('');
@@ -1903,6 +1994,10 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       case 'lstlisting':
       case 'minted':
         return '<pre class="doc-verbatim">' + escapeHtml(inner) + '</pre>';
+      case 'minipage':
+      case 'multicols':
+        return '<div class="doc-center">' +
+          renderBlocks(String(inner).replace(/^\s*\{[^}]*\}/, ''), ctx) + '</div>';
       case 'document':
         return renderBlocks(inner, ctx);
       default:
@@ -1930,7 +2025,10 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       if (m[1]) {
         const env = m[1];
         if (mathStateAt(text, m.index) !== 'none') continue;
-        const innerStart = m.index + m[0].length;
+        let innerStart = m.index + m[0].length;
+        /* optional placement/position argument, e.g. \begin{table}[h] */
+        const placement = /^\s*\[[^\]]*\]/.exec(text.slice(innerStart));
+        if (placement) innerStart += placement[0].length;
         const found = findEnvEnd(text, innerStart, env);
         if (!found) {
           out += renderProse(text.slice(last, m.index), ctx);
@@ -1969,9 +2067,34 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     return out;
   }
 
+  function collectUserMacros(src) {
+    const macros = {};
+    const defRe = /\\(newcommand|renewcommand|providecommand)\*?\s*\{?\s*\\([A-Za-z]+)\s*\}?\s*(?:\[(\d)\])?\s*\{/g;
+    let m;
+    while ((m = defRe.exec(src)) !== null) {
+      const open = m.index + m[0].length - 1;
+      const close = matchBrace(src, open);
+      if (close < 0) continue;
+      macros['\\' + m[2]] = src.slice(open + 1, close);
+    }
+    const defPlain = /\\def\s*\\([A-Za-z]+)\s*\{/g;
+    while ((m = defPlain.exec(src)) !== null) {
+      const open = m.index + m[0].length - 1;
+      const close = matchBrace(src, open);
+      if (close < 0) continue;
+      macros['\\' + m[1]] = src.slice(open + 1, close);
+    }
+    const opRe = /\\DeclareMathOperator\*?\s*\{\\([A-Za-z]+)\}\s*\{([^{}]*)\}/g;
+    while ((m = opRe.exec(src)) !== null) {
+      macros['\\' + m[1]] = '\\operatorname{' + m[2] + '}';
+    }
+    return macros;
+  }
+
   function compileDocument(source) {
     const src = stripComments(source);
     const ctx = makeCtx({});
+    ctx.macros = collectUserMacros(src);
 
     const beginMatch = /\\begin\s*\{document\}/.exec(src);
     let preamble = '';
@@ -1983,7 +2106,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       const endIdx = after.search(/\\end\s*\{document\}/);
       body = endIdx >= 0 ? after.slice(0, endIdx) : after;
     } else {
-      const preambleLine = /^\s*\\(documentclass|usepackage|RequirePackage|newcommand|renewcommand|providecommand|def|let|title|author|date|geometry|pagestyle|thispagestyle|setlength|addtolength|setcounter|bibliography|bibliographystyle|graphicspath|hypersetup|newtheorem)\b/;
+      const preambleLine = /^\s*\\(documentclass|usepackage|RequirePackage|newcommand|renewcommand|providecommand|DeclareMathOperator|DeclareRobustCommand|def|let|title|author|date|geometry|pagestyle|thispagestyle|setlength|addtolength|setcounter|bibliography|bibliographystyle|graphicspath|hypersetup|newtheorem)\b/;
       const lines = body.split('\n');
       const pre = [];
       const rest = [];
@@ -2237,7 +2360,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
           ],
           throwOnError: false,
           strict: false,
-          macros: MACROS,
+          macros: Object.assign({}, MACROS, (result.ctx && result.ctx.macros) || {}),
           preProcess: (math) => expandPhysicsMacros(math),
           errorColor: '#DC2626'
         });
