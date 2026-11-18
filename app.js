@@ -170,6 +170,127 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
 \end{document}
 `;
 
+  const PROJECT_TEMPLATES = [
+    {
+      id: 'lab-report',
+      name: 'Lab report',
+      description: 'Title, abstract, methods, results table and discussion.',
+      content: String.raw`\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb}
+\usepackage{geometry}
+\geometry{margin=1in}
+
+\title{Lab Report: Experiment Name}
+\author{Your Name}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+One-paragraph summary of the question, method and main result.
+\end{abstract}
+
+\section{Introduction}
+State the question and the hypothesis.
+
+\section{Methods}
+Describe the apparatus and procedure.
+
+\section{Results}
+\begin{table}[h]
+  \centering
+  \caption{Measured values.}
+  \begin{tabular}{|l|c|c|}
+    \hline
+    Trial & Measurement & Uncertainty \\
+    \hline
+    1 & 0.00 & 0.00 \\
+    2 & 0.00 & 0.00 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\section{Discussion}
+Interpret the result and compare it with theory.
+
+\section{Conclusion}
+Answer the original question in one or two sentences.
+
+\end{document}
+`
+    },
+    {
+      id: 'homework',
+      name: 'Homework set',
+      description: 'Numbered problems with worked equations and answers.',
+      content: String.raw`\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb}
+\usepackage{geometry}
+\geometry{margin=1in}
+
+\title{Problem Set 1}
+\author{Your Name}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section*{Problem 1}
+State the problem here.
+\begin{equation}
+  \int_{0}^{1} x^{2} \, dx = \frac{1}{3}.
+\end{equation}
+
+\section*{Problem 2}
+Continue with the next problem.
+
+\end{document}
+`
+    },
+    {
+      id: 'paper',
+      name: 'Short paper',
+      description: 'Abstract, introduction, methods, results and conclusion.',
+      content: String.raw`\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb}
+\usepackage{geometry}
+\geometry{margin=1in}
+
+\title{Paper Title}
+\author{Your Name}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Summarise the motivation, approach and key finding.
+\end{abstract}
+
+\section{Introduction}
+Motivate the problem and state the contribution.
+
+\section{Methods}
+Describe the model, data or derivation.
+
+\section{Results}
+Present the main result.
+\begin{equation}
+  E = mc^{2}.
+\end{equation}
+
+\section{Discussion}
+Explain limitations and implications.
+
+\section{Conclusion}
+Close with the main takeaway.
+
+\end{document}
+`
+    }
+  ];
+
   /* ------------------------------------------------------------------ *
    *  TeX macros shared by the preview and the symbol drawer
    * ------------------------------------------------------------------ */
@@ -2417,6 +2538,53 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     cm.focus();
   }
 
+  let latexHintCache = null;
+
+  function latexHintCommands() {
+    if (latexHintCache) return latexHintCache;
+    const commands = new Set([
+      '\\documentclass', '\\usepackage', '\\begin', '\\end', '\\section', '\\subsection',
+      '\\subsubsection', '\\paragraph', '\\label', '\\ref', '\\eqref', '\\cite', '\\caption',
+      '\\includegraphics', '\\item', '\\hline', '\\maketitle', '\\tableofcontents',
+      '\\newcommand', '\\renewcommand', '\\frac', '\\dfrac', '\\sqrt', '\\sum', '\\prod',
+      '\\int', '\\lim', '\\left', '\\right', '\\text', '\\mathrm', '\\mathbf', '\\mathit',
+      '\\mathcal', '\\mathbb', '\\operatorname', '\\binom', '\\overline', '\\underline',
+      '\\hat', '\\vec', '\\dot', '\\ddot', '\\partial', '\\nabla', '\\infty', '\\to', '\\mapsto'
+    ]);
+    Object.keys(MACROS).forEach((key) => commands.add(key));
+    SYMBOL_GROUPS.forEach((group) => {
+      (group.items || []).forEach((item) => {
+        let text = '';
+        if (Array.isArray(item)) text = item[0];
+        else if (item && typeof item === 'object') text = item.display || item.text || item.insert || '';
+        const match = /\\[A-Za-z]+/.exec(String(text));
+        if (match) commands.add(match[0]);
+      });
+    });
+    latexHintCache = Array.from(commands).sort((a, b) => a.localeCompare(b));
+    return latexHintCache;
+  }
+
+  function latexHint(instance) {
+    const cur = instance.getCursor();
+    const token = instance.getTokenAt(cur);
+    const match = /\\[A-Za-z]*$/.exec(token.string);
+    if (!match) return null;
+    const term = match[0].slice(1).toLowerCase();
+    if (!term) return null;
+    const list = latexHintCommands().filter((cmd) => cmd.slice(1).toLowerCase().startsWith(term));
+    if (!list.length) return null;
+    return {
+      list: list.slice(0, 40),
+      from: window.CodeMirror.Pos(cur.line, token.start + match.index),
+      to: cur
+    };
+  }
+
+  if (window.CodeMirror && window.CodeMirror.registerHelper) {
+    window.CodeMirror.registerHelper('hint', 'stex', latexHint);
+  }
+
   function initEditor() {
     const host = $('#editorHost');
     if (!host) return;
@@ -2454,7 +2622,10 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
           toast('Saved locally', 'success');
         },
         'Cmd-K': () => openNlp(),
-        'Ctrl-K': () => openNlp()
+        'Ctrl-K': () => openNlp(),
+        'Ctrl-Space': () => {
+          if (cm && cm.showHint) cm.showHint({ hint: latexHint, completeSingle: false });
+        }
       }
     });
 
@@ -3454,6 +3625,61 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     toast('Downloaded ' + file, 'success');
   }
 
+  function importTexFile() {
+    const input = $('#texFileInput');
+    if (!input) return;
+    input.value = '';
+    input.click();
+  }
+
+  async function handleTexFile(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file || !cm) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast('That file is larger than 2 MB.', 'error');
+      return;
+    }
+    try {
+      const text = await file.text();
+      if (!text.trim()) {
+        toast('That file is empty.', 'warn');
+        return;
+      }
+      if (cm.getValue().trim() && !window.confirm('Replace the current document with ' + file.name + '?')) return;
+      cm.setValue(text);
+      markDirty();
+      renderNow({ manual: true });
+      toast('Imported ' + file.name, 'success');
+    } catch (_) {
+      toast('Could not read that file.', 'error');
+    }
+  }
+
+  function renderTemplates() {
+    const host = $('#templateList');
+    if (!host) return;
+    host.innerHTML = PROJECT_TEMPLATES.map((template) =>
+      '<button class="template-card" type="button" data-template="' + escapeHtml(template.id) + '">' +
+        '<strong>' + escapeHtml(template.name) + '</strong>' +
+        '<span>' + escapeHtml(template.description) + '</span>' +
+      '</button>'
+    ).join('');
+  }
+
+  function loadTemplate(id) {
+    const template = PROJECT_TEMPLATES.find((entry) => entry.id === id);
+    if (!template || !cm) return;
+    if (cm.getValue().trim() &&
+      !window.confirm('Replace the current document with the ' + template.name + ' template?')) {
+      return;
+    }
+    cm.setValue(template.content);
+    markDirty();
+    renderNow({ manual: true });
+    closeModal('#templateModal');
+    toast(template.name + ' template loaded', 'success');
+  }
+
   async function copyText(text) {
     if (navigator.clipboard && window.isSecureContext) {
       try {
@@ -3592,6 +3818,14 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     $('#exportPdfBtn').addEventListener('click', exportPdf);
     $('#printBtn').addEventListener('click', printPreview);
     $('#downloadTexBtn').addEventListener('click', downloadTex);
+    $('#importTexBtn').addEventListener('click', importTexFile);
+    $('#texFileInput').addEventListener('change', handleTexFile);
+    renderTemplates();
+    $('#templatesBtn').addEventListener('click', () => openModal('#templateModal'));
+    $('#templateList').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-template]');
+      if (button) loadTemplate(button.dataset.template);
+    });
     $('#copyBtn').addEventListener('click', copySource);
     $('#wrapInlineBtn').addEventListener('click', () => insertSnippet('$' + CURSOR + '$'));
     $('#wrapDisplayBtn').addEventListener('click', () => insertSnippet('$$' + CURSOR + '$$'));

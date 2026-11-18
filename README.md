@@ -8,10 +8,47 @@ SciDocs is a browser-based scientific document workbench for writing LaTeX — m
 
 The plain-English converter works instantly with local, rule-based rewriting, so it needs no account or network connection. Phrases like “x squared plus y squared” or “integral from 0 to infinity of x squared dx” become LaTeX as you type.
 
-### AI refine (optional)
+## Add an AI key (optional, about 2 minutes)
 
-For messier wording, the converter has a **SciDocs AI** pass. Add your own [OpenRouter](https://openrouter.ai/keys) API key under **AI settings** in the converter; the key is stored only in this browser and requests go directly from the page to OpenRouter. The default model is `google/gemini-3.5-flash-lite`, and any OpenAI-compatible base URL and model can be used instead.
+AI refinement is optional. The local converter always works without it.
 
-You can add **custom instructions** (for example, prefer `pmatrix` and keep vectors bold) and use **Test** to check the provider’s `/models` endpoint. If the model returns invalid KaTeX, SciDocs AI automatically asks once for a corrected expression before falling back to the local draft.
+1. Open **https://openrouter.ai/keys** and sign in (or create an account).
+2. Click **Create key**, copy the key, and keep it private.
+3. Open SciDocs and click **Text → LaTeX** in the top bar.
+4. Expand **AI settings**.
+5. Paste the key into **API key**.
+6. Optionally add **custom instructions** (for example: “Prefer `pmatrix` for matrices and keep vectors bold”).
+7. Click **Test**. A successful check shows **Connected · N models**.
+8. Click **Save**. The badge should read **auto on**.
 
-**Auto refine** is enabled by default once a key is saved. It waits until you pause typing, then refines the expression automatically; stale requests are cancelled and manual AI refine still works. Auto mode uses provider credits, so it can be switched off in AI settings. Without a key, the local converter keeps working exactly as before.
+Now type a formula and pause: SciDocs AI refines it automatically. Use **AI refine** to run it manually, or uncheck **Auto refine while typing** to avoid spending credits automatically.
+
+### Using a different provider
+
+The **Model** and **Base URL** fields accept any OpenAI-compatible chat-completions provider. Change both, paste that provider’s key, and click **Test** then **Save**. The default is `google/gemini-3.5-flash-lite` on `https://openrouter.ai/api/v1`.
+
+### Privacy and cost
+
+- The key is stored only in this browser’s `localStorage`.
+- Requests go directly from your browser to the provider you configure; SciDocs has no server and never receives the key.
+- AI calls use your provider account and credits. Auto mode only runs while you are using the converter and pauses after you stop typing.
+- Never commit an API key to the repository or paste it into chat. Keys belong only in the AI settings panel.
+
+### Troubleshooting
+
+- **`add an API key first`** — the key was not saved. Paste it again and click **Save**.
+- **`AI request failed (401)`** — the key is wrong or revoked. Create a new key.
+- **`AI request failed (402)`** — the provider account needs credits.
+- **`AI request failed (429)`** — rate limited. Wait or switch models.
+- **`Test failed: HTTP 404`** — the base URL or model is wrong, or the provider does not expose `/models`.
+- **`AI unavailable · local draft`** — the local converter result is still usable; check the AI settings.
+- **No network request without a key** — expected. AI stays off until you add one.
+
+If the model returns invalid KaTeX, SciDocs AI automatically sends one correction request with the parse error, then falls back to the local draft if the correction also fails.
+
+## Editor and files
+
+- **Ctrl/Cmd + Space** suggests LaTeX commands while typing.
+- **Import** loads a `.tex` file into the editor; **.tex** downloads the current source.
+- **Templates** starts a lab report, homework set or paper.
+- Projects autosave to `localStorage`; PDF export uses the rendered preview.
