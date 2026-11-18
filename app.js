@@ -67,7 +67,7 @@
 \maketitle
 
 \begin{abstract}
-These notes collect the analytic solution of the one-dimensional quantum harmonic oscillator, its matrix representation in the occupation-number basis, and a compact table of the lowest energy eigenstates. Every formula below is typeset live in your browser by KaTeX — there is no server involved.
+These notes collect the analytic solution of the one-dimensional quantum harmonic oscillator, its matrix representation in the occupation-number basis, and a compact table of the lowest energy eigenstates. Every formula below is typeset live in your browser with LaTeX — there is no server involved.
 \end{abstract}
 
 \section{Introduction}
@@ -526,15 +526,22 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       if (raw) {
         const data = JSON.parse(raw);
         if (data && Array.isArray(data.projects) && data.projects.length) {
-          state.projects = data.projects.map((p) => ({
-            id: String(p.id || uid()),
-            name: String(p.name || 'Untitled Document'),
-            content: String(typeof p.content === 'string' ? p.content : ''),
-            updatedAt: Number(p.updatedAt) || Date.now()
-          }));
+          let migrated = false;
+          state.projects = data.projects.map((p) => {
+            const saved = String(typeof p.content === 'string' ? p.content : '');
+            const content = saved.replace(/in your browser by KaTeX/g, 'in your browser with LaTeX');
+            if (content !== saved) migrated = true;
+            return {
+              id: String(p.id || uid()),
+              name: String(p.name || 'Untitled Document'),
+              content,
+              updatedAt: Number(p.updatedAt) || Date.now()
+            };
+          });
           state.activeId = state.projects.some((p) => p.id === data.activeId)
             ? data.activeId
             : state.projects[0].id;
+          if (migrated) persist();
           return;
         }
       }
@@ -873,7 +880,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
         displayMode: Boolean(display)
       }));
       if (ctx && html.indexOf('katex-error') >= 0 && ctx.warnings.length < 4) {
-        ctx.warnings.push('KaTeX could not fully parse “' + shorten(clean, 60) + '”.');
+        ctx.warnings.push('LaTeX could not fully parse “' + shorten(clean, 60) + '”.');
       }
       return html;
     } catch (err) {
@@ -1471,7 +1478,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     const rights = (text.match(/\\right(?![A-Za-z])/g) || []).length;
     if (lefts !== rights) {
       warnings.push(
-        '\\left and \\right are unbalanced (' + lefts + ' vs ' + rights + '). KaTeX may reject the expression.'
+        '\\left and \\right are unbalanced (' + lefts + ' vs ' + rights + '). LaTeX may reject the expression.'
       );
     }
 
@@ -1930,6 +1937,40 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     return s;
   }
 
+  function normalizeMathText(input) {
+    let s = String(input || '');
+    const map = [
+      [/[×✕✖]/g, '*'], [/[÷∕]/g, '/'], [/[−–—]/g, '-'], [/²/g, '^2'], [/³/g, '^3'],
+      [/√/g, 'sqrt '], [/π/g, ' pi '], [/∞/g, ' infinity '], [/≤/g, '<='],
+      [/≥/g, '>='], [/≠/g, '!='], [/∑/g, 'sum '], [/∫/g, 'integral '],
+      [/≈/g, ' approximately '], [/±/g, ' plus or minus ']
+    ];
+    map.forEach(([pattern, replacement]) => {
+      s = s.replace(pattern, replacement);
+    });
+    return s;
+  }
+
+  function applyFractions(input) {
+    let s = input;
+    s = s.replace(/(?<![\w\\])(\d+)\s*\/\s*(\d+)(?![\w])/g, '\\frac{$1}{$2}');
+    s = s.replace(/(?<![\w\\])([A-Za-z])\s*\/\s*(\d+)(?![\w])/g, '\\frac{$1}{$2}');
+    return s;
+  }
+
+  function inferRunningIndex(latex) {
+    const text = String(latex || '').replace(/\\[A-Za-z]+/g, ' ');
+    const counts = {};
+    const re = /(?<![A-Za-z\\])([A-Za-z])(?![A-Za-z])/g;
+    let match;
+    while ((match = re.exec(text))) {
+      const letter = match[1];
+      counts[letter] = (counts[letter] || 0) + 1;
+    }
+    const ranked = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+    return ranked.length ? ranked[0] : '';
+  }
+
   function translate(input) {
     let s = String(input || '');
     s = applyPowers(s);
@@ -1938,6 +1979,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     s = applyFunctions(s);
     s = applySymbols(s);
     s = applyWordOperators(s);
+    s = applyFractions(s);
     s = s.replace(/\s+/g, ' ').trim();
     return s;
   }
@@ -1959,8 +2001,10 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     s = s.replace(/\s+/g, ' ').trim();
     s = s.replace(/\s*\^\s*/g, '^');
     s = s.replace(/\s*_\s*/g, '_');
+    s = s.replace(/\^([A-Za-z0-9])(?![A-Za-z0-9{])/g, '^{$1}');
+    s = s.replace(/_([A-Za-z0-9])(?![A-Za-z0-9{])/g, '_{$1}');
     s = s.replace(/\s+([,;])/g, '$1');
-    s = s.replace(/\s*([+\-=<>])\s*/g, ' $1 ');
+    s = s.replace(/\s*([+\-=<>])\s*/g, '$1');
     s = s.replace(/[.。]\s*$/, '');
     s = s.replace(/\s{2,}/g, ' ').trim();
     return s;
@@ -1968,7 +2012,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
 
   function naturalToLatex(rawInput) {
     if (!rawInput || !rawInput.trim()) return '';
-    let s = rawInput.trim().replace(/\s+/g, ' ');
+    let s = normalizeMathText(rawInput).trim().replace(/\s+/g, ' ');
 
     /* limits */
     s = s.replace(
@@ -1996,14 +2040,28 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
       'triple integral': '\\iiint',
       'contour integral': '\\oint',
       integral: '\\int',
+      summation: '\\sum',
       sum: '\\sum',
       product: '\\prod'
     };
     s = s.replace(
-      /\b(double integral|triple integral|contour integral|integral|sum|product)\s+(?:from|between)\s+(.+?)\s+to\s+(.+?)\s+of\s+([^,;]+)/gi,
-      (match, op, lower, upper, expr) =>
-        ops[op.toLowerCase()] + '_{' + translate(lower) + '}^{' + translate(upper) + '} ' +
-        translateDifferential(expr)
+      /\b(double integral|triple integral|contour integral|integral|summation|sum|product)\s+(?:from|between)\s+(.+?)\s+to\s+(.+?)\s+of\s+([^,;]+)/gi,
+      (match, op, lowerRaw, upperRaw, expr) => {
+        const key = op.toLowerCase();
+        let lower = lowerRaw.trim().replace(/^\(|\)$/g, '').trim();
+        let index = '';
+        const withIndex = /^([A-Za-z])\s*=\s*(.+)$/.exec(lower);
+        if (withIndex) {
+          index = withIndex[1];
+          lower = withIndex[2];
+        }
+        const body = translateDifferential(expr);
+        if (!index && (key === 'sum' || key === 'summation' || key === 'product')) {
+          index = inferRunningIndex(body);
+        }
+        return (ops[key] || '\\sum') + '_{' + (index ? index + '=' : '') + translate(lower) +
+          '}^{' + translate(upperRaw) + '}' + body;
+      }
     );
 
     /* unbounded operators */
@@ -2013,6 +2071,9 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     );
 
     /* roots */
+    s = s.replace(/\bsqrt\s*\(([^()]*)\)/gi, (match, expr) =>
+      '\\sqrt{' + translate(expr) + '}'
+    );
     s = s.replace(
       /\b(?:square\s+root|sqrt|root)\s+of\s+(.+?)(?=\s+d\s*[A-Za-z]\s*(?:[,;]|$)|[,;]|$)/gi,
       (match, expr) => '\\sqrt{' + translate(expr) + '}'
@@ -2054,6 +2115,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
    *  Conversion modal
    * ------------------------------------------------------------------ */
   const NLP_EXAMPLES = [
+    'summation from 0 to 5 of (k^2 + k + 17/6)',
     'integral from 0 to infinity of x squared dx',
     'sum from i=1 to n of i squared',
     'limit as x approaches 0 of sin x over x',
