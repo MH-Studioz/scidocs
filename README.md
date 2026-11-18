@@ -2,6 +2,8 @@
 
 https://mh-studioz.github.io/scidocs/
 
+v0.9 beta 
+
 SciDocs is a browser-based scientific document workbench for writing LaTeX — math, physics, chemistry, biology and quantum notation with live preview and PDF export. The editor, renderer and exports run locally in the browser; AI refinement is an optional direct call to a provider you configure.
 
 ## Text → LaTeX
