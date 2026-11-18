@@ -1,3 +1,3 @@
-idk what to write here
+https://mh-studioz.github.io/latex-lab/
 
-LaTeX Lab is a tool to write those pesky math equations easily
+A tool to help write those pesky math and physics equations in your browser easily!
