@@ -18,7 +18,7 @@
   <!-- Rendering engines -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css" />
-  <link rel="stylesheet" href="styles.css?v=21" />
+  <link rel="stylesheet" href="styles.css?v=23" />
 
   <script defer src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
@@ -29,7 +29,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/closebrackets.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/selection/active-line.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
-  <script defer src="app.js?v=21"></script>
+  <script defer src="app.js?v=23"></script>
 </head>
 
 <body class="app">
@@ -215,9 +215,42 @@
 
         <div class="nlp-output-head">
           <span class="field-label">LaTeX output</span>
-          <span class="badge-soft" id="nlpNote">ready to insert</span>
+          <div class="nlp-output-tools">
+            <span class="badge-soft" id="nlpNote" aria-live="polite">ready to insert</span>
+            <button class="btn btn-ghost nlp-ai-btn" type="button" id="nlpAi" title="Refine this conversion with AI">
+              <i data-lucide="sparkles"></i><span>AI refine</span>
+            </button>
+          </div>
         </div>
         <pre class="nlp-output mono" id="nlpOutput">\int_{0}^{\infty} x^{2} \, dx</pre>
+
+        <details class="ai-config" id="aiConfig">
+          <summary>
+            <i data-lucide="key-round"></i>
+            <span>AI settings</span>
+            <span class="ai-state" id="aiState">optional</span>
+          </summary>
+          <div class="ai-config-body">
+            <p class="hint">Bring your own <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter key</a>. It is stored only in this browser and sent directly to the provider — SciDocs has no backend. AI calls use your provider credits.</p>
+            <label class="field-label" for="aiKey">API key</label>
+            <input id="aiKey" class="field mono" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-…" />
+            <div class="ai-config-grid">
+              <div>
+                <label class="field-label" for="aiModel">Model</label>
+                <input id="aiModel" class="field mono" type="text" autocomplete="off" spellcheck="false" />
+              </div>
+              <div>
+                <label class="field-label" for="aiBase">Base URL</label>
+                <input id="aiBase" class="field mono" type="text" autocomplete="off" spellcheck="false" />
+              </div>
+            </div>
+            <div class="ai-config-actions">
+              <button class="btn btn-ghost" type="button" id="aiSave">Save key</button>
+              <button class="btn btn-ghost" type="button" id="aiClear">Clear</button>
+              <span class="hint" id="aiConfigNote"></span>
+            </div>
+          </div>
+        </details>
       </div>
 
       <div class="modal-foot">

@@ -2910,6 +2910,164 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     'alpha times beta equals gamma'
   ];
 
+  const AI_STORE_KEY = 'scidocs.ai.v1';
+  const AI_DEFAULTS = {
+    apiKey: '',
+    model: 'google/gemini-3.5-flash-lite',
+    baseUrl: 'https://openrouter.ai/api/v1'
+  };
+  const AI_SYSTEM_PROMPT =
+    'You convert plain-English mathematics into one LaTeX math expression. ' +
+    'Return only the LaTeX code: no dollar signs, no code fences, no explanation. ' +
+    'Use standard KaTeX-compatible commands and preserve fractions, integrals with limits, ' +
+    'derivatives, roots, subscripts, superscripts, vectors and Greek letters. ' +
+    'If the wording is ambiguous, choose the most standard mathematical reading.';
+
+  function readAiConfig() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(AI_STORE_KEY) || '{}');
+      if (raw && typeof raw === 'object') {
+        return {
+          apiKey: typeof raw.apiKey === 'string' ? raw.apiKey : '',
+          model: typeof raw.model === 'string' && raw.model.trim() ? raw.model.trim() : AI_DEFAULTS.model,
+          baseUrl: typeof raw.baseUrl === 'string' && raw.baseUrl.trim()
+            ? raw.baseUrl.trim().replace(/\/+$/, '')
+            : AI_DEFAULTS.baseUrl
+        };
+      }
+    } catch (_) { /* storage may be unavailable */ }
+    return Object.assign({}, AI_DEFAULTS);
+  }
+
+  let aiConfig = readAiConfig();
+
+  function persistAiConfig() {
+    try { localStorage.setItem(AI_STORE_KEY, JSON.stringify(aiConfig)); } catch (_) { /* ignore */ }
+  }
+
+  function syncAiFields() {
+    const key = $('#aiKey');
+    const model = $('#aiModel');
+    const base = $('#aiBase');
+    const state = $('#aiState');
+    if (key) key.value = aiConfig.apiKey;
+    if (model) model.value = aiConfig.model;
+    if (base) base.value = aiConfig.baseUrl;
+    if (state) state.textContent = aiConfig.apiKey ? 'key saved' : 'optional';
+  }
+
+  function cleanAiLatex(value) {
+    let s = String(value || '').trim();
+    s = s.replace(/^```(?:latex|tex|math)?\s*/i, '').replace(/```\s*$/, '').trim();
+    s = s.replace(/^\\\[\s*([\s\S]*?)\s*\\\]$/, '$1');
+    s = s.replace(/^\\\(\s*([\s\S]*?)\s*\\\)$/, '$1');
+    s = s.replace(/^\$\$([\s\S]*?)\$\$$/, '$1');
+    s = s.replace(/^\$([\s\S]*?)\$$/, '$1');
+    s = s.replace(/^(?:latex|formula)\s*[:：]\s*/i, '').trim();
+    return s;
+  }
+
+  async function refineNlpWithAi() {
+    const input = $('#nlpInput');
+    const output = $('#nlpOutput');
+    const note = $('#nlpNote');
+    const button = $('#nlpAi');
+    if (!input || !output) return;
+    const text = input.value.trim();
+    if (!text) { input.focus(); return; }
+
+    if (!aiConfig.apiKey) {
+      const config = $('#aiConfig');
+      if (config) config.open = true;
+      const keyField = $('#aiKey');
+      if (keyField) keyField.focus();
+      if (note) {
+        note.classList.remove('is-ai', 'is-busy');
+        note.classList.add('is-warn');
+        note.textContent = 'add an API key first';
+      }
+      return;
+    }
+
+    const draft = naturalToLatex(text);
+    if (button) { button.disabled = true; button.setAttribute('aria-busy', 'true'); }
+    if (note) {
+      note.classList.remove('is-warn', 'is-ai');
+      note.classList.add('is-busy');
+      note.textContent = 'asking AI…';
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
+    try {
+      const base = aiConfig.baseUrl.replace(/\/+$/, '');
+      const response = await fetch(base + '/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + aiConfig.apiKey
+        },
+        body: JSON.stringify({
+          model: aiConfig.model,
+          temperature: 0,
+          max_tokens: 600,
+          messages: [
+            { role: 'system', content: AI_SYSTEM_PROMPT },
+            {
+              role: 'user',
+              content: 'Plain English: ' + text +
+                '\n\nRule-based draft (may be imperfect): ' + (draft || '(none)')
+            }
+          ]
+        }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        let detail = '';
+        try {
+          const body = await response.json();
+          detail = body && body.error && body.error.message ? String(body.error.message) : '';
+        } catch (_) { /* non-JSON error */ }
+        throw new Error('AI request failed (' + response.status + ')' +
+          (detail ? ': ' + detail.slice(0, 140) : ''));
+      }
+
+      const data = await response.json();
+      const message = data && data.choices && data.choices[0] && data.choices[0].message;
+      const content = message && (typeof message.content === 'string'
+        ? message.content
+        : Array.isArray(message.content)
+          ? message.content.map((part) => (part && part.text) || '').join('')
+          : '');
+      const latex = cleanAiLatex(content);
+      if (!latex) throw new Error('AI returned an empty result.');
+
+      if (window.katex) {
+        window.katex.renderToString(latex, { throwOnError: true, strict: false, macros: MACROS });
+      }
+
+      output.textContent = latex;
+      if (note) {
+        note.classList.remove('is-warn', 'is-busy');
+        note.classList.add('is-ai');
+        note.textContent = 'AI refined · ' + aiConfig.model;
+      }
+    } catch (err) {
+      if (note) {
+        note.classList.remove('is-busy', 'is-ai');
+        note.classList.add('is-warn');
+        const message = err && err.name === 'AbortError'
+          ? 'AI request timed out'
+          : (err && err.message ? err.message : 'AI request failed');
+        note.textContent = message.length > 90 ? message.slice(0, 87) + '…' : message;
+      }
+    } finally {
+      clearTimeout(timer);
+      if (button) { button.disabled = false; button.removeAttribute('aria-busy'); }
+    }
+  }
+
   function updateNlpOutput() {
     const input = $('#nlpInput');
     const output = $('#nlpOutput');
@@ -2921,6 +3079,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
 
     if (note) {
       const leftovers = latex ? leftoverWords(latex) : [];
+      note.classList.remove('is-ai', 'is-busy');
       note.classList.toggle('is-warn', leftovers.length > 0);
       note.textContent = !latex
         ? 'ready to insert'
@@ -3359,6 +3518,38 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     $('#nlpCopy').addEventListener('click', copyFromModal);
     $('#nlpInsert').addEventListener('click', () => insertNlp('inline'));
     $('#nlpInsertBlock').addEventListener('click', () => insertNlp('block'));
+
+    /* optional AI refinement */
+    syncAiFields();
+    const nlpAi = $('#nlpAi');
+    if (nlpAi) nlpAi.addEventListener('click', refineNlpWithAi);
+    const aiSave = $('#aiSave');
+    if (aiSave) aiSave.addEventListener('click', () => {
+      const key = $('#aiKey') ? $('#aiKey').value.trim() : '';
+      const model = $('#aiModel') && $('#aiModel').value.trim()
+        ? $('#aiModel').value.trim()
+        : AI_DEFAULTS.model;
+      const base = ($('#aiBase') && $('#aiBase').value.trim()
+        ? $('#aiBase').value.trim()
+        : AI_DEFAULTS.baseUrl).replace(/\/+$/, '');
+      if (!/^https:\/\//i.test(base)) {
+        if ($('#aiConfigNote')) $('#aiConfigNote').textContent = 'Base URL must start with https://';
+        return;
+      }
+      aiConfig = { apiKey: key, model: model, baseUrl: base };
+      persistAiConfig();
+      syncAiFields();
+      if ($('#aiConfigNote')) {
+        $('#aiConfigNote').textContent = key ? 'Saved in this browser.' : 'No key saved.';
+      }
+    });
+    const aiClear = $('#aiClear');
+    if (aiClear) aiClear.addEventListener('click', () => {
+      aiConfig = { apiKey: '', model: aiConfig.model, baseUrl: aiConfig.baseUrl };
+      persistAiConfig();
+      syncAiFields();
+      if ($('#aiConfigNote')) $('#aiConfigNote').textContent = 'Key cleared.';
+    });
 
     /* modal dismissal */
     document.addEventListener('click', (event) => {
