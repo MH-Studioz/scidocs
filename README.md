@@ -1,3 +1,5 @@
+# SciDocs
+
 https://mh-studioz.github.io/latex-lab/
 
-A tool to help write those pesky math and physics equations in your browser easily!
+A browser-based scientific document workbench for writing LaTeX — math, physics, chemistry, biology and quantum notation with live preview and PDF export. Everything runs locally in the browser.

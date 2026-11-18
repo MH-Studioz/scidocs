@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>LaTeX Lab — Browser-based LaTeX IDE</title>
-  <meta name="description" content="LaTeX Lab is a 100% client-side LaTeX IDE and document workbench: live LaTeX preview, symbol lab, natural text to LaTeX converter, local projects and PDF export. No backend, no build step." />
+  <title>SciDocs — Browser-based scientific LaTeX IDE</title>
+  <meta name="description" content="SciDocs is a 100% client-side LaTeX IDE and scientific document workbench: live LaTeX preview, symbol library, natural text to LaTeX converter, local projects and PDF export. No backend, no build step." />
   <meta name="theme-color" content="#0F172A" />
   <meta name="color-scheme" content="dark" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236366F1'/%3E%3Ctext x='16' y='23' font-family='Georgia,serif' font-size='19' fill='%23F8FAFC' text-anchor='middle'%3E%CF%83%3C/text%3E%3C/svg%3E" />
@@ -18,7 +18,7 @@
   <!-- Rendering engines -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css" />
-  <link rel="stylesheet" href="styles.css?v=18" />
+  <link rel="stylesheet" href="styles.css?v=19" />
 
   <script defer src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
@@ -29,7 +29,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/closebrackets.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/selection/active-line.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
-  <script defer src="app.js?v=18"></script>
+  <script defer src="app.js?v=19"></script>
 </head>
 
 <body class="app">
@@ -38,10 +38,10 @@
 
   <!-- ============================== TOP BAR ============================== -->
   <header class="topbar">
-    <a class="brand" href="#" aria-label="LaTeX Lab home">
+    <a class="brand" href="#" aria-label="SciDocs home">
       <span class="brand-mark" aria-hidden="true">&sigma;</span>
       <span class="brand-text">
-        LaTeX Lab
+        SciDocs
         <small>document workbench</small>
       </span>
     </a>
@@ -276,7 +276,7 @@
   <div id="pdfStage" class="pdf-stage" aria-hidden="true"></div>
 
   <noscript>
-    <div class="noscript">LaTeX Lab compiles documents inside your browser, so JavaScript is required — there is no server to fall back to.</div>
+    <div class="noscript">SciDocs compiles documents inside your browser, so JavaScript is required — there is no server to fall back to.</div>
   </noscript>
 </body>
 </html>

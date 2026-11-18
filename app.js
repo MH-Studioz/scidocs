@@ -1,5 +1,5 @@
 /* =====================================================================
-   LaTeX Lab — 100% client-side LaTeX IDE
+       SciDocs — 100% client-side scientific LaTeX IDE
    No backend, no build step. Everything runs in this tab.
    ===================================================================== */
 (() => {
@@ -66,7 +66,7 @@
 \geometry{margin=1in}
 
 \title{The Quantum Harmonic Oscillator}
-\author{LaTeX Lab \\ Department of Physics}
+\author{SciDocs \\ Department of Physics}
 \date{\today}
 
 \begin{document}
@@ -647,7 +647,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
         JSON.stringify({ version: 1, activeId: state.activeId, projects: state.projects })
       );
     } catch (err) {
-      console.warn('LaTeX Lab: could not save workspace', err);
+      console.warn('SciDocs: could not save workspace', err);
       toast('Could not save locally — browser storage is full or blocked.', 'error');
     }
   }
@@ -684,7 +684,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
         }
       }
     } catch (err) {
-      console.warn('LaTeX Lab: saved workspace is unreadable, starting fresh', err);
+      console.warn('SciDocs: saved workspace is unreadable, starting fresh', err);
     }
     state.projects = [
       { id: uid(), name: 'Starter Document', content: STARTER, updatedAt: Date.now() }
@@ -742,7 +742,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
     if (tab) tab.textContent = file;
     const option = $('#projectSelect');
     if (option) option.value = project.id;
-    document.title = project.name + ' — LaTeX Lab';
+    document.title = project.name + ' — SciDocs';
   }
 
   function renderProjectSelect() {
@@ -2365,7 +2365,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
           errorColor: '#DC2626'
         });
       } catch (err) {
-        console.warn('LaTeX Lab: auto-render pass failed', err);
+        console.warn('SciDocs: auto-render pass failed', err);
       }
     }
 
@@ -3231,7 +3231,7 @@ Start typing here. Inline math looks like $e^{i\pi} + 1 = 0$, and a display equa
 
       toast('PDF exported', 'success');
     } catch (err) {
-      console.error('LaTeX Lab: PDF export failed', err);
+      console.error('SciDocs: PDF export failed', err);
       toast('PDF export failed — opening the print dialog instead.', 'warn');
       window.print();
     } finally {
