@@ -9,6 +9,9 @@
   const CURSOR = '[[CURSOR]]';
   const STORE_KEY = 'latexlab.workspace.v1';
   const PREFS_KEY = 'latexlab.prefs.v1';
+  const DB_NAME = 'scidocs.db';
+  const DB_VERSION = 1;
+  const SNAPSHOT_LIMIT = 20;
 
   /* ------------------------------------------------------------------ *
    *  DOM helpers
@@ -753,6 +756,9 @@ Close with the main takeaway.
    * ------------------------------------------------------------------ */
   const state = { projects: [], activeId: null };
   let cm = null;
+  let historyOpen = false;
+  let lastSnapshotAt = 0;
+  let snapshotBusy = false;
   const prefs = { sidebarCollapsed: false };
 
   const activeProject = () =>
@@ -761,16 +767,114 @@ Close with the main takeaway.
   /* ------------------------------------------------------------------ *
    *  localStorage persistence
    * ------------------------------------------------------------------ */
+  let dbPromise = null;
+  let storageWarned = false;
+
+  function openDb() {
+    if (!('indexedDB' in window)) return Promise.resolve(null);
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve) => {
+      let request;
+      try {
+        request = indexedDB.open(DB_NAME, DB_VERSION);
+      } catch (_) {
+        resolve(null);
+        return;
+      }
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains('workspace')) db.createObjectStore('workspace');
+        if (!db.objectStoreNames.contains('snapshots')) db.createObjectStore('snapshots', { keyPath: 'id' });
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => {
+        console.warn('SciDocs: IndexedDB unavailable, using localStorage only', request.error);
+        resolve(null);
+      };
+    });
+    return dbPromise;
+  }
+
+  async function idbGet(store, key) {
+    const db = await openDb();
+    if (!db) return null;
+    return new Promise((resolve) => {
+      try {
+        const request = db.transaction(store, 'readonly').objectStore(store).get(key);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => resolve(null);
+      } catch (_) {
+        resolve(null);
+      }
+    });
+  }
+
+  async function idbPut(store, value, key) {
+    const db = await openDb();
+    if (!db) return false;
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(store, 'readwrite');
+        const objectStore = tx.objectStore(store);
+        if (key === undefined) objectStore.put(value);
+        else objectStore.put(value, key);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+        tx.onabort = () => resolve(false);
+      } catch (_) {
+        resolve(false);
+      }
+    });
+  }
+
+  async function idbAll(store) {
+    const db = await openDb();
+    if (!db) return [];
+    return new Promise((resolve) => {
+      try {
+        const request = db.transaction(store, 'readonly').objectStore(store).getAll();
+        request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+        request.onerror = () => resolve([]);
+      } catch (_) {
+        resolve([]);
+      }
+    });
+  }
+
+  async function idbDelete(store, key) {
+    const db = await openDb();
+    if (!db) return false;
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(store, 'readwrite');
+        tx.objectStore(store).delete(key);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      } catch (_) {
+        resolve(false);
+      }
+    });
+  }
+
+  function workspacePayload() {
+    return { version: 1, activeId: state.activeId, projects: state.projects };
+  }
+
   function persist() {
+    const payload = workspacePayload();
+    let localSaved = true;
     try {
-      localStorage.setItem(
-        STORE_KEY,
-        JSON.stringify({ version: 1, activeId: state.activeId, projects: state.projects })
-      );
+      localStorage.setItem(STORE_KEY, JSON.stringify(payload));
     } catch (err) {
-      console.warn('SciDocs: could not save workspace', err);
-      toast('Could not save locally — browser storage is full or blocked.', 'error');
+      localSaved = false;
+      console.warn('SciDocs: could not save workspace to localStorage', err);
     }
+    idbPut('workspace', payload, 'current').then((ok) => {
+      if (!ok && !localSaved && !storageWarned) {
+        storageWarned = true;
+        toast('Browser storage is blocked — download a backup from History before closing.', 'error');
+      }
+    });
   }
 
   function persistPrefs() {
@@ -779,27 +883,41 @@ Close with the main takeaway.
     } catch (_) { /* ignore */ }
   }
 
-  function loadWorkspace() {
+  function adoptWorkspace(data) {
+    if (!data || !Array.isArray(data.projects) || !data.projects.length) return false;
+    let migrated = false;
+    state.projects = data.projects.map((p) => {
+      const saved = String(typeof p.content === 'string' ? p.content : '');
+      const content = saved.replace(/in your browser by KaTeX/g, 'in your browser with LaTeX');
+      if (content !== saved) migrated = true;
+      return {
+        id: String(p.id || uid()),
+        name: String(p.name || 'Untitled Document'),
+        content,
+        updatedAt: Number(p.updatedAt) || Date.now()
+      };
+    });
+    state.activeId = state.projects.some((p) => p.id === data.activeId)
+      ? data.activeId
+      : state.projects[0].id;
+    return migrated;
+  }
+
+  async function loadWorkspace() {
+    const stored = await idbGet('workspace', 'current');
+    if (stored && Array.isArray(stored.projects) && stored.projects.length) {
+      const migrated = adoptWorkspace(stored);
+      if (migrated) persist();
+      return;
+    }
+
     try {
       const raw = localStorage.getItem(STORE_KEY);
       if (raw) {
         const data = JSON.parse(raw);
         if (data && Array.isArray(data.projects) && data.projects.length) {
-          let migrated = false;
-          state.projects = data.projects.map((p) => {
-            const saved = String(typeof p.content === 'string' ? p.content : '');
-            const content = saved.replace(/in your browser by KaTeX/g, 'in your browser with LaTeX');
-            if (content !== saved) migrated = true;
-            return {
-              id: String(p.id || uid()),
-              name: String(p.name || 'Untitled Document'),
-              content,
-              updatedAt: Number(p.updatedAt) || Date.now()
-            };
-          });
-          state.activeId = state.projects.some((p) => p.id === data.activeId)
-            ? data.activeId
-            : state.projects[0].id;
+          const migrated = adoptWorkspace(data);
+          await idbPut('workspace', workspacePayload(), 'current');
           if (migrated) persist();
           return;
         }
@@ -833,8 +951,210 @@ Close with the main takeaway.
     project.content = cm.getValue();
     project.updatedAt = Date.now();
     persist();
+    maybeAutoSnapshot();
     const saveState = $('#saveState');
     if (saveState) saveState.textContent = 'Saved locally';
+  }
+
+  function relativeTime(timestamp) {
+    const diff = Math.max(0, Date.now() - timestamp);
+    if (diff < 60 * 1000) return 'just now';
+    if (diff < 60 * 60 * 1000) return Math.floor(diff / 60000) + 'm ago';
+    if (diff < 24 * 60 * 60 * 1000) return Math.floor(diff / 3600000) + 'h ago';
+    return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
+  async function captureSnapshot(reason) {
+    const project = activeProject();
+    if (!project || !cm || snapshotBusy) return false;
+    const content = cm.getValue();
+    if (!content.trim()) return false;
+    snapshotBusy = true;
+    try {
+      const snapshots = (await idbAll('snapshots'))
+        .filter((item) => item.projectId === project.id)
+        .sort((a, b) => b.createdAt - a.createdAt);
+      if (snapshots[0] && snapshots[0].content === content) return false;
+      const snapshot = {
+        id: 's_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+        projectId: project.id,
+        name: project.name,
+        content,
+        createdAt: Date.now(),
+        reason: reason || 'Manual'
+      };
+      await idbPut('snapshots', snapshot);
+      lastSnapshotAt = snapshot.createdAt;
+      const keep = [snapshot].concat(snapshots).slice(0, SNAPSHOT_LIMIT);
+      const keepIds = new Set(keep.map((item) => item.id));
+      for (const old of snapshots) {
+        if (!keepIds.has(old.id)) await idbDelete('snapshots', old.id);
+      }
+      if (historyOpen) renderHistory();
+      return true;
+    } finally {
+      snapshotBusy = false;
+    }
+  }
+
+  function maybeAutoSnapshot() {
+    if (Date.now() - lastSnapshotAt < 5 * 60 * 1000) return;
+    lastSnapshotAt = Date.now();
+    captureSnapshot('Auto');
+  }
+
+  async function renderHistory() {
+    const list = $('#historyList');
+    if (!list) return;
+    const project = activeProject();
+    if (!project) return;
+    const scope = $('#historyScope');
+    if (scope) scope.textContent = 'Snapshots for “' + project.name + '”. Auto-saved about every 5 minutes while editing.';
+    list.innerHTML = '<p class="history-empty">Loading snapshots…</p>';
+    const items = (await idbAll('snapshots'))
+      .filter((item) => item.projectId === project.id)
+      .sort((a, b) => b.createdAt - a.createdAt);
+    if (!items.length) {
+      list.innerHTML = '<p class="history-empty">No snapshots yet. One is saved automatically when you pause after editing, or use <strong>Snapshot now</strong>.</p>';
+      return;
+    }
+    list.innerHTML = '';
+    for (const item of items) {
+      const row = document.createElement('div');
+      row.className = 'history-row';
+      const meta = document.createElement('div');
+      meta.className = 'history-meta';
+      const title = document.createElement('strong');
+      title.textContent = item.reason || 'Snapshot';
+      const detail = document.createElement('span');
+      detail.textContent = relativeTime(item.createdAt) + ' · ' +
+        countWords(item.content) + ' words';
+      meta.appendChild(title);
+      meta.appendChild(detail);
+      const actions = document.createElement('div');
+      actions.className = 'history-actions';
+      const restore = document.createElement('button');
+      restore.type = 'button';
+      restore.className = 'btn btn-ghost btn-xs';
+      restore.textContent = 'Restore';
+      restore.addEventListener('click', () => restoreSnapshot(item));
+      const download = document.createElement('button');
+      download.type = 'button';
+      download.className = 'btn btn-ghost btn-xs';
+      download.textContent = 'Download';
+      download.addEventListener('click', () => {
+        triggerDownload(new Blob([item.content], { type: 'application/x-tex;charset=utf-8' }),
+          projectFileStem(project) + '-' + new Date(item.createdAt).toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.tex');
+      });
+      actions.appendChild(restore);
+      actions.appendChild(download);
+      row.appendChild(meta);
+      row.appendChild(actions);
+      list.appendChild(row);
+    }
+    refreshIcons();
+  }
+
+  async function restoreSnapshot(item) {
+    if (!item || !cm) return;
+    await captureSnapshot('Before restore');
+    closeModal('#historyModal');
+    historyOpen = false;
+    openConfirm({
+      title: 'Restore this version?',
+      message: 'The current text will be replaced by the snapshot from ' + relativeTime(item.createdAt) + '. A backup snapshot is saved first.',
+      confirmLabel: 'Restore version',
+      onConfirm: () => {
+        cm.setValue(item.content);
+        markDirty();
+        saveNow();
+        renderNow({ manual: true });
+        toast('Restored snapshot from ' + relativeTime(item.createdAt), 'success');
+      }
+    });
+  }
+
+  function openHistory() {
+    if (cm) saveNow();
+    historyOpen = true;
+    openModal('#historyModal');
+    renderHistory();
+  }
+
+  function exportBackup() {
+    saveNow();
+    const payload = {
+      app: 'SciDocs',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      projects: state.projects.map(({ id, name, content, updatedAt }) => ({ id, name, content, updatedAt }))
+    };
+    triggerDownload(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }), 'scidocs-backup.json');
+    toast('Workspace backup downloaded', 'success');
+  }
+
+  function importBackup() {
+    const input = $('#backupFile');
+    if (!input) return;
+    input.value = '';
+    input.click();
+  }
+
+  async function handleBackupFile(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast('Backup is larger than 5 MB.', 'warn');
+      return;
+    }
+    let data;
+    try {
+      data = JSON.parse(await file.text());
+    } catch (_) {
+      toast('That file is not valid JSON.', 'error');
+      return;
+    }
+    if (!data || !Array.isArray(data.projects) || !data.projects.length) {
+      toast('That backup contains no projects.', 'warn');
+      return;
+    }
+    closeModal('#historyModal');
+    historyOpen = false;
+    openConfirm({
+      title: 'Import backup?',
+      message: 'Add ' + data.projects.length + ' project' + (data.projects.length === 1 ? '' : 's') +
+        ' to this browser. Existing projects will be kept and renamed if needed.',
+      confirmLabel: 'Import projects',
+      onConfirm: () => {
+        const used = new Set(state.projects.map((p) => p.name));
+        const imported = data.projects.map((p) => {
+          let name = String(p && p.name || 'Imported document').slice(0, 80) || 'Imported document';
+          const base = name;
+          let count = 2;
+          while (used.has(name)) name = base + ' (' + count++ + ')';
+          used.add(name);
+          return {
+            id: uid(),
+            name,
+            content: String(p && typeof p.content === 'string' ? p.content : ''),
+            updatedAt: Date.now()
+          };
+        });
+        state.projects = imported.concat(state.projects);
+        state.activeId = imported[0].id;
+        lastSnapshotAt = 0;
+        persist();
+        renderProjectSelect();
+        if (cm) {
+          cm.setValue(imported[0].content);
+          cm.clearHistory();
+          cm.focus();
+        }
+        updateTabName();
+        renderNow();
+        toast('Imported ' + imported.length + ' project' + (imported.length === 1 ? '' : 's'), 'success');
+      }
+    });
   }
 
   const scheduleSave = debounce(() => saveNow(), 650);
@@ -882,6 +1202,7 @@ Close with the main takeaway.
     if (!cm || id === state.activeId) return;
     if (!state.projects.some((p) => p.id === id)) return;
     saveNow();
+    captureSnapshot('Before switch');
     state.activeId = id;
     persist();
     renderProjectSelect();
@@ -2290,7 +2611,8 @@ Close with the main takeaway.
         if (!braceStack.length) {
           errors.push({
             msg: 'Unexpected closing brace “}” on line ' + lineOf(text, i) + '.',
-            hint: 'Remove it or add a matching “{” earlier.'
+            hint: 'Remove it or add a matching “{” earlier.',
+            line: lineOf(text, i)
           });
           break;
         }
@@ -2300,13 +2622,16 @@ Close with the main takeaway.
     if (braceStack.length && errors.length < 3) {
       errors.push({
         msg: braceStack.length + ' unclosed “{” — first on line ' + lineOf(text, braceStack[0]) + '.',
-        hint: 'Every “{” needs a matching “}”.'
+        hint: 'Every “{” needs a matching “}”.',
+        line: lineOf(text, braceStack[0])
       });
     }
 
     /* math delimiters */
     let single = 0;
     let double = 0;
+    let lastSingle = -1;
+    let lastDouble = -1;
     for (let i = 0; i < text.length; i++) {
       if (text[i] === '\\') {
         i++;
@@ -2315,22 +2640,26 @@ Close with the main takeaway.
       if (text[i] === '$') {
         if (text[i + 1] === '$') {
           double++;
+          lastDouble = i;
           i++;
         } else {
           single++;
+          lastSingle = i;
         }
       }
     }
     if (single % 2 === 1) {
       errors.push({
         msg: 'A “$” inline math delimiter is never closed.',
-        hint: 'Pair each $…$; write \\$ for a literal dollar sign.'
+        hint: 'Pair each $…$; write \\$ for a literal dollar sign.',
+        line: lineOf(text, lastSingle)
       });
     }
     if (double % 2 === 1) {
       errors.push({
         msg: 'A “$$” display math delimiter is never closed.',
-        hint: 'Display math needs both opening and closing $$.'
+        hint: 'Display math needs both opening and closing $$.',
+        line: lineOf(text, lastDouble)
       });
     }
 
@@ -2347,12 +2676,14 @@ Close with the main takeaway.
         if (!top) {
           errors.push({
             msg: '\\end{' + em[2] + '} on line ' + line + ' has no matching \\begin.',
-            hint: 'Add the opening environment or remove this line.'
+            hint: 'Add the opening environment or remove this line.',
+            line
           });
         } else if (top.env !== em[2]) {
           errors.push({
             msg: '\\end{' + em[2] + '} on line ' + line + ' closes \\begin{' + top.env + '} from line ' + top.line + '.',
-            hint: 'Environments must nest in order.'
+            hint: 'Environments must nest in order.',
+            line
           });
         }
       }
@@ -2360,7 +2691,8 @@ Close with the main takeaway.
     envStack.slice(0, 2).forEach((open) => {
       errors.push({
         msg: '\\begin{' + open.env + '} on line ' + open.line + ' is never closed.',
-        hint: 'Add \\end{' + open.env + '} to close it.'
+        hint: 'Add \\end{' + open.env + '} to close it.',
+        line: open.line
       });
     });
 
@@ -2422,6 +2754,7 @@ Close with the main takeaway.
     let title = 'Syntax OK';
     let detail = 'Braces, math delimiters and environments are balanced.';
     let hint = '';
+    let jumpLine = 0;
 
     if (errors.length) {
       level = 'is-error';
@@ -2429,6 +2762,7 @@ Close with the main takeaway.
       title = errors.length + ' syntax issue' + (errors.length === 1 ? '' : 's');
       detail = errors[0].msg;
       hint = errors[0].hint || '';
+      jumpLine = errors[0].line || 0;
       if (errors.length > 1) detail += ' (+' + (errors.length - 1) + ' more)';
     } else if (warnings.length) {
       level = 'is-warn';
@@ -2444,6 +2778,7 @@ Close with the main takeaway.
       '<div class="syntax-copy"><strong>' + escapeHtml(title) + '</strong>' +
       '<span>' + escapeHtml(detail) +
       (hint ? ' <span class="banner-hint">' + escapeHtml(hint) + '</span>' : '') +
+      (jumpLine ? ' <button class="banner-jump" type="button" data-jump-line="' + jumpLine + '">Go to line ' + jumpLine + '</button>' : '') +
       '</span></div>';
     banner.title = errors.concat(warnings.map((w) => ({ msg: w }))).map((e) => e.msg).join('\n');
     refreshIcons();
@@ -3455,6 +3790,7 @@ Close with the main takeaway.
     const modal = typeof selector === 'string' ? $(selector) : selector;
     if (!modal) return;
     modal.hidden = true;
+    if (modal.id === 'historyModal') historyOpen = false;
     openModals.delete(modal);
     if (!openModals.size) {
       document.body.classList.remove('modal-open');
@@ -3580,6 +3916,11 @@ Close with the main takeaway.
           state.projects.push(fresh);
         }
 
+        idbAll('snapshots').then((snapshots) => {
+          snapshots.filter((item) => item.projectId === project.id)
+            .forEach((item) => idbDelete('snapshots', item.id));
+        });
+
         const next = state.projects[Math.min(index, state.projects.length - 1)];
         state.activeId = next.id;
         persist();
@@ -3641,6 +3982,7 @@ Close with the main takeaway.
         return;
       }
       if (cm.getValue().trim() && !window.confirm('Replace the current document with ' + file.name + '?')) return;
+      captureSnapshot('Before import');
       cm.setValue(text);
       markDirty();
       renderNow({ manual: true });
@@ -3668,6 +4010,7 @@ Close with the main takeaway.
       !window.confirm('Replace the current document with the ' + template.name + ' template?')) {
       return;
     }
+    captureSnapshot('Before template');
     cm.setValue(template.content);
     markDirty();
     renderNow({ manual: true });
@@ -3923,6 +4266,7 @@ Close with the main takeaway.
     $('#texFileInput').addEventListener('change', handleTexFile);
     renderTemplates();
     $('#templatesBtn').addEventListener('click', () => openModal('#templateModal'));
+    $('#scopeBtn').addEventListener('click', () => openModal('#scopeModal'));
     $('#templateList').addEventListener('click', (event) => {
       const button = event.target.closest('[data-template]');
       if (button) loadTemplate(button.dataset.template);
@@ -3957,6 +4301,15 @@ Close with the main takeaway.
     $('#newProjectBtn').addEventListener('click', createProjectFlow);
     $('#renameProjectBtn').addEventListener('click', renameProjectFlow);
     $('#deleteProjectBtn').addEventListener('click', deleteProjectFlow);
+    $('#historyBtn').addEventListener('click', openHistory);
+    $('#snapshotBtn').addEventListener('click', async () => {
+      const ok = await captureSnapshot('Manual snapshot');
+      toast(ok ? 'Snapshot saved' : 'Nothing new to snapshot', ok ? 'success' : 'info');
+      if (historyOpen) renderHistory();
+    });
+    $('#backupExport').addEventListener('click', exportBackup);
+    $('#backupImport').addEventListener('click', importBackup);
+    $('#backupFile').addEventListener('change', handleBackupFile);
 
     $('#sidebarToggle').addEventListener('click', () => {
       prefs.sidebarCollapsed = !prefs.sidebarCollapsed;
@@ -4074,6 +4427,18 @@ Close with the main takeaway.
       }
     });
 
+    const banner = $('#syntaxBanner');
+    if (banner) {
+      banner.addEventListener('click', (event) => {
+        const jump = event.target.closest('[data-jump-line]');
+        if (!jump || !cm) return;
+        const line = Math.max(0, Number(jump.dataset.jumpLine) - 1);
+        cm.setCursor({ line, ch: 0 });
+        cm.focus();
+        cm.scrollIntoView({ line, ch: 0 }, 80);
+      });
+    }
+
     /* modal dismissal */
     document.addEventListener('click', (event) => {
       const closer = event.target.closest('[data-close-modal]');
@@ -4112,9 +4477,9 @@ Close with the main takeaway.
   /* ------------------------------------------------------------------ *
    *  Boot
    * ------------------------------------------------------------------ */
-  function init() {
+  async function init() {
     loadPrefs();
-    loadWorkspace();
+    await loadWorkspace();
     renderProjectSelect();
     renderSymbols();
     initEditor();
@@ -4126,11 +4491,27 @@ Close with the main takeaway.
     }
     refreshIcons();
     openSharedFromLocation();
+    captureSnapshot('Opened');
+  }
+
+  function registerOffline() {
+    if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
+    navigator.serviceWorker.register('./sw.js').catch((err) => {
+      console.warn('SciDocs: offline cache could not be installed', err);
+    });
+  }
+
+  function boot() {
+    registerOffline();
+    init().catch((err) => {
+      console.error('SciDocs: startup failed', err);
+      toast('SciDocs could not open its local workspace. Reload the page.', 'error');
+    });
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', boot);
   } else {
-    init();
+    boot();
   }
 })();

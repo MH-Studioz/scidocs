@@ -52,7 +52,24 @@ If the model returns invalid KaTeX, SciDocs AI automatically sends one correctio
 - **Import** loads a `.tex` file into the editor; **.tex** downloads the current source.
 - **Share** copies a link containing the document; opening it imports a local `(shared)` project.
 - **Templates** starts a lab report, homework set or paper.
-- Projects autosave to `localStorage`; PDF export uses the rendered preview.
+- The syntax banner now shows the first structural problem with a **Go to line** button, plus a count of further issues.
+- **History** keeps automatic snapshots, restores previous versions, and exports/imports a JSON workspace backup.
+- **Info** explains what the browser preview supports and where a full TeX compile is needed.
+- Projects autosave to `IndexedDB` (with a `localStorage` mirror); PDF export uses the rendered preview.
+
+## History and backups
+
+Open **History** in the project toolbar. SciDocs keeps up to 20 snapshots per project in IndexedDB: one when you pause after editing (at most every five minutes), one when you switch projects or replace the editor with a template or import, and any manual snapshots you create. Each snapshot can be restored or downloaded as `.tex`.
+
+**Export backup** downloads a JSON file containing every project. **Import backup** adds the projects from a JSON file without deleting current projects; duplicate names receive a numeric suffix. Browsers can clear site storage, so keep a backup of important work.
+
+## Offline use
+
+SciDocs registers a small service worker after the first visit. The app shell, icons and the libraries loaded from jsDelivr and Google Fonts are cached, so the editor and preview reopen offline. AI refinement still needs a network connection because it calls your provider. Use the browser’s **Install** action (or **Add to Home Screen**) for a standalone window. If a cached asset is stale after an update, reload once while online.
+
+## Preview scope
+
+The live preview is a fast browser renderer, not a full TeX distribution. Core math and KaTeX commands, sections, lists, tables, links, common formatting, custom macros and the built-in science notation work. Arbitrary packages, BibTeX, multi-file `\input`, exact journal layout, custom fonts and full TikZ are outside the preview. Unsupported commands may appear as text or be ignored. For a submission that depends on those features, download the `.tex` source and compile it in your TeX editor or Overleaf. The **Info** button in the top bar repeats this scope inside the app.
 
 ## Share links
 
