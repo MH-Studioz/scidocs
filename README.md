@@ -51,6 +51,7 @@ If the model returns invalid KaTeX, SciDocs AI automatically sends one correctio
 ## Editor and files
 
 - **Ctrl + Space** (Windows/Linux) or **Cmd + Space** (macOS) suggests LaTeX commands while typing. If macOS Spotlight captures `Cmd + Space`, use **Alt + /**.
+- The **Symbol Lab** search accepts `/sigma`, `\sigma` or `sigma`.
 - **Import** loads a `.tex` file into the editor; **.tex** downloads the current source.
 - **Share** copies a link containing the document; opening it imports a local `(shared)` project.
 - **Templates** starts a lab report, homework set or paper.

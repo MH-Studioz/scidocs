@@ -3124,7 +3124,8 @@ Close with the main takeaway.
   }
 
   function filterSymbols(query) {
-    const q = String(query || '').trim().toLowerCase();
+    /* Accept /sigma, \\sigma and sigma as the same search term. */
+    const q = String(query || '').trim().toLowerCase().replace(/^[\\/]+/, '');
     $$('.sym-group').forEach((group) => {
       let matches = 0;
       $$('.sym-btn', group).forEach((btn) => {
