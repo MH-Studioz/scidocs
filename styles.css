@@ -1775,6 +1775,70 @@ body.sidebar-collapsed .sidebar {
   gap: 4px;
 }
 
+.guide-body {
+  display: grid;
+  gap: 12px;
+}
+
+.guide-section {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.guide-section.is-highlight {
+  border-color: rgba(129, 140, 248, 0.45);
+  background: rgba(99, 102, 241, 0.09);
+}
+
+.guide-section h3 {
+  margin: 0 0 5px;
+  font-size: 12px;
+}
+
+.guide-section p,
+.guide-section li {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.guide-section p + p,
+.guide-section p + ul,
+.guide-section p + ol,
+.guide-section ul,
+.guide-section ol {
+  margin-top: 6px;
+}
+
+.guide-section ul,
+.guide-section ol {
+  padding-left: 18px;
+}
+
+.guide-section code {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.guide-code {
+  margin: 7px 0;
+  padding: 8px 9px;
+  overflow-x: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: rgba(2, 6, 23, 0.55);
+  color: #C7D2FE;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .scope-body {
   display: grid;
   gap: 10px;

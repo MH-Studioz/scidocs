@@ -6,6 +6,31 @@ v0.9 beta
 
 SciDocs is a browser-based scientific document workbench for writing LaTeX — math, physics, chemistry, biology and quantum notation with live preview and PDF export. The editor, renderer and exports run locally in the browser; AI refinement is an optional direct call to a provider you configure.
 
+## Quick start
+
+1. Type or paste LaTeX in the editor; the preview updates automatically.
+2. Put formulas **inside math mode** (see below). A command such as `\sigma` is not interpreted in ordinary text.
+3. Use **Symbol Lab** on the left (or below the editor on a phone): search `/sigma`, then tap the result. SciDocs wraps it in math automatically when needed.
+4. Use **Compile** for an immediate refresh, **Export PDF** to download, and **History** to restore a snapshot or make a backup.
+5. Open the **Guide** button in the top bar for the same instructions inside the app.
+
+## Math mode: why `\sigma` can appear as text
+
+LaTeX commands only render inside math mode. This is valid LaTeX behavior, not a preview failure:
+
+| Editor source | What it means |
+|---|---|
+| `\sigma * 8` | Ordinary text; the command is shown literally |
+| `$\sigma * 8$` | Inline math |
+| `$$\sigma * 8$$` | Centered display math |
+| `\begin{equation}\sigma * 8\end{equation}` | Numbered equation |
+| `\(\sigma * 8\)` | Inline math with bracket delimiters |
+| `\[\sigma * 8\]` | Display math with bracket delimiters |
+
+If you see a command rendered literally, wrap the **whole expression**, not just the command. For example, change `\sigma * 8` to `$\sigma * 8$`.
+
+The syntax banner also warns when a known math command appears outside math mode and offers **Go to line**. The built-in **Symbol Lab** avoids the problem for new insertions: outside math, it inserts `$\sigma$` and leaves the cursor inside the math so you can continue typing; inside math or an equation environment, it inserts the raw command. Document structures such as sections and tables are never wrapped.
+
 ## Text → LaTeX
 
 The plain-English converter works instantly with local, rule-based rewriting, so it needs no account or network connection. Phrases like “x squared plus y squared” or “integral from 0 to infinity of x squared dx” become LaTeX as you type.
@@ -51,13 +76,15 @@ If the model returns invalid KaTeX, SciDocs AI automatically sends one correctio
 ## Editor and files
 
 - **Ctrl + Space** (Windows/Linux) or **Cmd + Space** (macOS) suggests LaTeX commands while typing. If macOS Spotlight captures `Cmd + Space`, use **Alt + /**.
-- The **Symbol Lab** search accepts `/sigma`, `\sigma` or `sigma`.
+- The **Symbol Lab** search accepts `/sigma`, `\sigma` or `sigma`; symbols are wrapped in math automatically when the cursor is outside math.
+- **Guide** in the top bar covers math mode, symbol insertion, errors, history, sharing and shortcuts.
 - **Import** loads a `.tex` file into the editor; **.tex** downloads the current source.
 - **Share** copies a link containing the document; opening it imports a local `(shared)` project.
 - **Templates** starts a lab report, homework set or paper.
-- The syntax banner now shows the first structural problem with a **Go to line** button, plus a count of further issues.
+- The syntax banner shows the first structural problem with a **Go to line** button, plus a count of further issues. It also warns about math commands used outside math mode.
 - **History** keeps automatic snapshots, restores previous versions, and exports/imports a JSON workspace backup.
 - **Info** explains what the browser preview supports and where a full TeX compile is needed.
+- **Guide** explains the workflow in the app; this README is the longer reference.
 - Projects autosave to `IndexedDB` (with a `localStorage` mirror); PDF export uses the rendered preview.
 
 ## History and backups

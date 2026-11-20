@@ -2700,10 +2700,19 @@ Close with the main takeaway.
     const lefts = (text.match(/\\left(?![A-Za-z])/g) || []).length;
     const rights = (text.match(/\\right(?![A-Za-z])/g) || []).length;
     if (lefts !== rights) {
-      warnings.push(
-        '\\left and \\right are unbalanced (' + lefts + ' vs ' + rights + '). LaTeX may reject the expression.'
-      );
+      warnings.push({
+        msg: '\\left and \\right are unbalanced (' + lefts + ' vs ' + rights + '). LaTeX may reject the expression.',
+        hint: 'Pair every \\left with a matching \\right.'
+      });
     }
+
+    findMathCommandsOutsideMath(source).slice(0, 3).forEach((item) => {
+      warnings.push({
+        msg: item.name + ' is a math command but appears outside math mode.',
+        hint: 'Wrap it as $' + item.name + '$ or put it inside an equation environment.',
+        line: item.line
+      });
+    });
 
     return { errors, warnings };
   }
@@ -2744,8 +2753,11 @@ Close with the main takeaway.
       ctx.errors.forEach((msg) => {
         if (!errors.some((e) => e.msg === msg)) errors.push({ msg });
       });
-      ctx.warnings.forEach((msg) => {
-        if (!warnings.includes(msg)) warnings.push(msg);
+      ctx.warnings.forEach((warning) => {
+        const msg = typeof warning === 'string' ? warning : warning.msg;
+        if (!warnings.some((item) => (typeof item === 'string' ? item : item.msg) === msg)) {
+          warnings.push(typeof warning === 'string' ? { msg: warning } : warning);
+        }
       });
     }
 
@@ -2768,7 +2780,10 @@ Close with the main takeaway.
       level = 'is-warn';
       icon = 'alert-circle';
       title = 'Heads up';
-      detail = warnings[0];
+      const firstWarning = warnings[0];
+      detail = typeof firstWarning === 'string' ? firstWarning : firstWarning.msg;
+      hint = typeof firstWarning === 'string' ? '' : firstWarning.hint || '';
+      jumpLine = typeof firstWarning === 'string' ? 0 : firstWarning.line || 0;
       if (warnings.length > 1) detail += ' (+' + (warnings.length - 1) + ' more)';
     }
 
@@ -2780,7 +2795,7 @@ Close with the main takeaway.
       (hint ? ' <span class="banner-hint">' + escapeHtml(hint) + '</span>' : '') +
       (jumpLine ? ' <button class="banner-jump" type="button" data-jump-line="' + jumpLine + '">Go to line ' + jumpLine + '</button>' : '') +
       '</span></div>';
-    banner.title = errors.concat(warnings.map((w) => ({ msg: w }))).map((e) => e.msg).join('\n');
+    banner.title = errors.concat(warnings.map((w) => ({ msg: typeof w === 'string' ? w : w.msg }))).map((e) => e.msg).join('\n');
     refreshIcons();
 
     const badge = $('#liveBadge');
@@ -2850,6 +2865,69 @@ Close with the main takeaway.
   /* ------------------------------------------------------------------ *
    *  Editor
    * ------------------------------------------------------------------ */
+  const MATH_ENVIRONMENTS = new Set([
+    'math', 'displaymath', 'equation', 'equation*', 'align', 'align*',
+    'alignat', 'alignat*', 'gather', 'gather*', 'multline', 'multline*',
+    'flalign', 'flalign*', 'eqnarray', 'eqnarray*', 'split', 'aligned',
+    'gathered', 'cases', 'matrix', 'pmatrix', 'bmatrix', 'Bmatrix',
+    'vmatrix', 'Vmatrix', 'array', 'smallmatrix'
+  ]);
+
+  function mathModeAt(source, index) {
+    const text = String(source || '');
+    const limit = Math.max(0, Math.min(Number(index) || 0, text.length));
+    let inline = false;
+    let display = false;
+    let environments = 0;
+
+    for (let i = 0; i < limit; i++) {
+      const ch = text[i];
+      if (ch === '%') {
+        while (i < limit && text[i] !== '\n') i++;
+        continue;
+      }
+      if (ch === '\\') {
+        const env = /^\\(begin|end)\s*\{([A-Za-z*]+)\}/.exec(text.slice(i, i + 40));
+        if (env) {
+          if (MATH_ENVIRONMENTS.has(env[2])) {
+            environments += env[1] === 'begin' ? 1 : -1;
+          }
+          i += env[0].length - 1;
+          continue;
+        }
+        if (text[i + 1] === '(') inline = true;
+        else if (text[i + 1] === ')') inline = false;
+        else if (text[i + 1] === '[') display = true;
+        else if (text[i + 1] === ']') display = false;
+        i++;
+        continue;
+      }
+      if (ch === '$') {
+        if (text[i + 1] === '$') {
+          display = !display;
+          i++;
+        } else if (!display) {
+          inline = !inline;
+        }
+      }
+    }
+    return display || inline || environments > 0;
+  }
+
+  function insertSymbol(item, isMath) {
+    if (!item || !cm) return;
+    let snippet = String(item.insert || '');
+    if (isMath && snippet.trim()) {
+      const cursor = cm.getCursor('from');
+      const index = cm.indexFromPos(cursor);
+      if (!mathModeAt(cm.getValue(), index)) {
+        const body = snippet.trim();
+        snippet = '$' + body + (body.indexOf(CURSOR) === -1 ? CURSOR : '') + '$ ';
+      }
+    }
+    insertSnippet(snippet);
+  }
+
   function insertSnippet(snippet) {
     if (!cm) return;
     const doc = cm.getDoc();
@@ -2871,6 +2949,80 @@ Close with the main takeaway.
     doc.replaceSelection(text, 'end');
     doc.setCursor(doc.posFromIndex(startIndex + offset));
     cm.focus();
+  }
+
+  let mathCommandCache = null;
+
+  function mathCommandSet() {
+    if (mathCommandCache) return mathCommandCache;
+    const names = new Set([
+      '\\frac', '\\dfrac', '\\tfrac', '\\sqrt', '\\sum', '\\prod', '\\int',
+      '\\lim', '\\left', '\\right', '\\text', '\\mathrm', '\\mathbf', '\\mathit',
+      '\\mathcal', '\\mathbb', '\\operatorname', '\\binom', '\\overline', '\\underline',
+      '\\hat', '\\vec', '\\dot', '\\ddot', '\\partial', '\\nabla', '\\infty',
+      '\\to', '\\mapsto', '\\times', '\\cdot', '\\pm', '\\leq', '\\geq', '\\neq'
+    ]);
+    SYMBOL_GROUPS.forEach((group) => {
+      if (group.id === 'structure') return;
+      (group.items || []).forEach((item) => {
+        const match = /\\[A-Za-z]+/.exec(String(item.insert || ''));
+        if (match && match[0] !== '\\begin' && match[0] !== '\\end') names.add(match[0]);
+      });
+    });
+    mathCommandCache = names;
+    return names;
+  }
+
+  function findMathCommandsOutsideMath(source) {
+    const text = String(source || '');
+    const names = mathCommandSet();
+    const found = [];
+    const seen = new Set();
+    let inline = false;
+    let display = false;
+    let environments = 0;
+
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === '%') {
+        while (i < text.length && text[i] !== '\n') i++;
+        continue;
+      }
+      if (ch === '\\') {
+        if (text[i + 1] === '\\') {
+          i++;
+          continue;
+        }
+        const env = /^\\(begin|end)\s*\{([A-Za-z*]+)\}/.exec(text.slice(i, i + 40));
+        if (env) {
+          if (MATH_ENVIRONMENTS.has(env[2])) {
+            environments += env[1] === 'begin' ? 1 : -1;
+          }
+          i += env[0].length - 1;
+          continue;
+        }
+        const command = /^\\[A-Za-z]+/.exec(text.slice(i, i + 40));
+        if (command && !inline && !display && environments === 0 && names.has(command[0]) && !seen.has(command[0])) {
+          seen.add(command[0]);
+          found.push({ name: command[0], line: lineOf(text, i) });
+        }
+        if (text[i + 1] === '(') inline = true;
+        else if (text[i + 1] === ')') inline = false;
+        else if (text[i + 1] === '[') display = true;
+        else if (text[i + 1] === ']') display = false;
+        i++;
+        continue;
+      }
+      if (ch === '$') {
+        if (text[i + 1] === '$') {
+          display = !display;
+          i++;
+        } else if (!display) {
+          inline = !inline;
+        }
+      }
+    }
+    return found;
   }
 
   let latexHintCache = null;
@@ -3012,14 +3164,15 @@ Close with the main takeaway.
     });
   }
 
-  function rememberSymbol(item) {
+  function rememberSymbol(item, isMath) {
     if (!item || !item.insert) return;
     const entry = {
       insert: item.insert,
       label: item.label || item.display || item.insert,
       display: item.display || '',
       icon: item.icon || '',
-      text: item.text || ''
+      text: item.text || '',
+      math: isMath !== false
     };
     const list = readRecent().filter((entryItem) => entryItem.insert !== entry.insert);
     list.unshift(entry);
@@ -3124,8 +3277,9 @@ Close with the main takeaway.
       if (!group) return;
       const item = group.items[Number(button.dataset.index)];
       if (!item) return;
-      insertSnippet(item.insert);
-      rememberSymbol(item);
+      const isMath = group.id !== 'structure';
+      insertSymbol(item, isMath);
+      rememberSymbol(item, isMath);
       announceSymbolInsert(item);
     });
   }
@@ -4275,6 +4429,11 @@ Close with the main takeaway.
     renderTemplates();
     $('#templatesBtn').addEventListener('click', () => openModal('#templateModal'));
     $('#scopeBtn').addEventListener('click', () => openModal('#scopeModal'));
+    $('#guideBtn').addEventListener('click', () => openModal('#guideModal'));
+    $('#guideScope').addEventListener('click', () => {
+      closeModal('#guideModal');
+      openModal('#scopeModal');
+    });
     $('#templateList').addEventListener('click', (event) => {
       const button = event.target.closest('[data-template]');
       if (button) loadTemplate(button.dataset.template);
@@ -4315,8 +4474,9 @@ Close with the main takeaway.
         if (!button) return;
         const item = readRecent()[Number(button.dataset.recentIndex)];
         if (!item) return;
-        insertSnippet(item.insert);
-        rememberSymbol(item);
+        const isMath = item.math !== false;
+        insertSymbol(item, isMath);
+        rememberSymbol(item, isMath);
         announceSymbolInsert(item);
       });
     }

@@ -21,7 +21,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/show-hint.min.css" />
-  <link rel="stylesheet" href="styles.css?v=35" />
+  <link rel="stylesheet" href="styles.css?v=37" />
 
   <script defer src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
@@ -33,7 +33,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/selection/active-line.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/show-hint.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
-  <script defer src="app.js?v=35"></script>
+  <script defer src="app.js?v=37"></script>
 </head>
 
 <body class="app">
@@ -89,6 +89,9 @@
       </button>
       <button class="btn btn-ghost btn-icon-only" type="button" id="templatesBtn" title="Start from a template" aria-label="Start from a template">
         <i data-lucide="file-plus-2"></i>
+      </button>
+      <button class="btn btn-ghost btn-icon-only" type="button" id="guideBtn" title="SciDocs user guide" aria-label="SciDocs user guide">
+        <i data-lucide="book-open"></i>
       </button>
       <button class="btn btn-ghost btn-icon-only" type="button" id="scopeBtn" title="What the preview supports" aria-label="What the preview supports">
         <i data-lucide="info"></i>
@@ -260,6 +263,72 @@
         <p class="hint">The syntax banner reports structural problems it can detect.</p>
         <div class="modal-actions">
           <button class="btn btn-ghost" type="button" data-close-modal>Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== USER GUIDE MODAL ============================== -->
+  <div class="modal-backdrop" id="guideModal" hidden>
+    <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
+      <div class="modal-head">
+        <span class="modal-icon"><i data-lucide="book-open"></i></span>
+        <div class="modal-title">
+          <h2 id="guideTitle">SciDocs user guide</h2>
+          <p>Write, preview and export a scientific document without a backend.</p>
+        </div>
+        <button class="icon-btn" type="button" data-close-modal aria-label="Close"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body guide-body">
+        <section class="guide-section">
+          <h3>1. Write in the editor</h3>
+          <p>Type LaTeX in the left editor. The preview updates automatically. Use <strong>Compile</strong> to refresh immediately, or <strong>Export PDF</strong> when the document is ready.</p>
+        </section>
+
+        <section class="guide-section is-highlight">
+          <h3>2. Math mode is required for commands</h3>
+          <p>Commands such as <code>\sigma</code> only render inside math mode. Outside math, LaTeX treats the command as ordinary text.</p>
+          <pre class="guide-code">\sigma * 8          → text: “\sigma * 8”
+$\sigma * 8$       → inline math
+$$\sigma * 8$$     → display math</pre>
+          <p>If you already typed a formula outside math, wrap the whole expression in dollar signs. Examples:</p>
+          <ul>
+            <li><code>$\sigma * 8$</code> for inline math.</li>
+            <li><code>$$\sigma * 8$$</code> for a centered display equation.</li>
+            <li><code>\begin{equation} \sigma * 8 \end{equation}</code> for a numbered equation.</li>
+          </ul>
+        </section>
+
+        <section class="guide-section">
+          <h3>3. Insert symbols from the Symbol Lab</h3>
+          <ol>
+            <li>Put the cursor where the symbol belongs.</li>
+            <li>Type <code>/sigma</code> in the Symbol Lab search. <code>\sigma</code> and <code>sigma</code> also work.</li>
+            <li>Tap or click the result.</li>
+          </ol>
+          <p>If the cursor is outside math, SciDocs automatically wraps the symbol in <code>$…$</code>. Inside math or a math environment, it inserts the raw command. Document structures such as sections and tables are never wrapped.</p>
+        </section>
+
+        <section class="guide-section">
+          <h3>4. Check errors before exporting</h3>
+          <p>The banner under the editor reports unbalanced braces, dollar signs and environments. When it shows an issue, use <strong>Go to line</strong> to jump to it. The <strong>Info</strong> button explains which LaTeX features the browser preview supports.</p>
+        </section>
+
+        <section class="guide-section">
+          <h3>5. Save, restore and share</h3>
+          <p>Projects autosave to this browser. Open <strong>History</strong> for snapshots, restore an earlier version, or export a JSON backup. <strong>Share</strong> puts the document inside a link; opening it creates a local <code>(shared)</code> project.</p>
+        </section>
+
+        <section class="guide-section">
+          <h3>6. Keyboard shortcuts</h3>
+          <p><code>Ctrl/Cmd + Enter</code> compile · <code>Ctrl/Cmd + S</code> save · <code>Ctrl/Cmd + Space</code> command suggestions · <code>Alt + /</code> fallback when Spotlight captures Cmd + Space · <code>Ctrl/Cmd + K</code> Text → LaTeX.</p>
+        </section>
+      </div>
+      <div class="modal-foot">
+        <p class="hint">AI refinement is optional and uses your own provider key.</p>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" id="guideScope">Preview scope</button>
+          <button class="btn btn-primary" type="button" data-close-modal>Got it</button>
         </div>
       </div>
     </div>
