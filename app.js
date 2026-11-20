@@ -2767,8 +2767,14 @@ Close with the main takeaway.
     return fields;
   }
 
+  /* Parsing a large .bib file on every compile is wasteful: the preview and the
+     diagnostics each recompile while typing. Cache the last parse by its exact
+     source text; callers must treat the returned entries as read-only. */
+  let bibParseCache = { text: null, entries: [] };
+
   function parseBibEntries(text) {
     const src = String(text || '');
+    if (bibParseCache.text === src) return bibParseCache.entries;
     const entries = [];
     const seen = new Set();
     let at = src.indexOf('@');
@@ -2793,6 +2799,7 @@ Close with the main takeaway.
       }
       at = src.indexOf('@', close + 1);
     }
+    bibParseCache = { text: src, entries };
     return entries;
   }
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.2.1] - 2026-11-20
+
+### Changed
+
+- **Bibliography parsing is memoized.** The BibTeX library is parsed once and reused until its text changes, instead of being re-parsed for every live-preview compile and every diagnostics pass. Rendering, citation numbering and exports are unchanged.
+
 ## [1.2.0] - 2026-11-20
 
 ### Added
