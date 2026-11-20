@@ -2419,6 +2419,7 @@ li.CodeMirror-hint-active {
     max-height: 340px;
     contain: paint;
   }
+  body.sidebar-collapsed .sidebar { display: none; }
   /* Paint containment keeps scrolled editor/preview content from inflating the
      document scroll height (which otherwise adds blank space under the page). */
   .pane { contain: paint; }
