@@ -2,7 +2,9 @@
 
 https://mh-studioz.github.io/scidocs/
 
-v0.9 beta 
+v1.0.1
+
+[Release notes](CHANGELOG.md)
 
 SciDocs is a browser-based scientific document workbench for writing LaTeX — math, physics, chemistry, biology and quantum notation with live preview and PDF export. The editor, renderer and exports run locally in the browser; AI refinement is an optional direct call to a provider you configure.
 
@@ -97,7 +99,7 @@ If the model returns invalid KaTeX, SciDocs AI automatically sends one correctio
 ## Editor and files
 
 - **Ctrl + Space** (Windows/Linux) or **Cmd + Space** (macOS) suggests LaTeX commands while typing. If macOS Spotlight captures `Cmd + Space`, use **Alt + /**.
-- The **Symbol Lab** search accepts `/sigma`, `\sigma` or `sigma`; symbols are wrapped in math automatically when the cursor is outside math.
+- The **Symbol Lab** search accepts `/sigma`, `\sigma` or `sigma`; symbols are wrapped in math automatically when the cursor is outside math. The **Inline math** and **Display math** items, and the toolbar wrap buttons, never add duplicate delimiters.
 - **Guide** in the top bar covers math mode, symbol insertion, errors, history, sharing and shortcuts.
 - **Import** loads a `.tex` file into the editor; **.tex** downloads the current source.
 - **Share** copies a link containing the document; opening it imports a local `(shared)` project.
@@ -106,7 +108,7 @@ If the model returns invalid KaTeX, SciDocs AI automatically sends one correctio
 - **History** keeps automatic snapshots, restores previous versions, and exports/imports a JSON workspace backup.
 - **Info** explains what the browser preview supports and where a full TeX compile is needed.
 - **Guide** explains the workflow in the app; this README is the longer reference.
-- The inline/display math toolbar buttons do not add `$` delimiters when the cursor is already inside math; they show a short notice instead.
+- The inline/display math toolbar buttons do not add `$` delimiters when the cursor is already inside math; they show a short notice instead. Empty wraps use a valid `$ $` or `$$ $$` pair, and boundary insertions add separation so a new `$$` is not formed accidentally.
 - Projects autosave to `IndexedDB` (with a `localStorage` mirror); PDF export uses the rendered preview.
 
 ## History and backups

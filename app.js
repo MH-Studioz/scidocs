@@ -429,8 +429,8 @@ Close with the main takeaway.
       title: 'Math building blocks',
       icon: 'braces',
       items: [
-        { display: 'x^2', label: 'Inline math', insert: '$' + CURSOR + '$' },
-        { display: '\\sum_{i=1}^{n} x_i', label: 'Display math', insert: '$$' + CURSOR + '$$' },
+        { display: 'x^2', label: 'Inline math', insert: '$' + CURSOR + ' $' },
+        { display: '\\sum_{i=1}^{n} x_i', label: 'Display math', insert: '$$' + CURSOR + ' $$' },
         { display: '\\binom{n}{k}', label: 'Binomial', insert: '\\binom{' + CURSOR + '}{}' },
         { display: '\\boxed{E=mc^2}', label: 'Boxed', insert: '\\boxed{' + CURSOR + '}' },
         { display: '\\text{if } x>0', label: 'Text in math', insert: '\\text{' + CURSOR + '}' },
@@ -739,7 +739,7 @@ Close with the main takeaway.
           insert: '\n\\begin{figure}[h]\n  \\centering\n  \\includegraphics[width=0.6\\textwidth]{' + CURSOR + '}\n  \\caption{A caption}\n\\end{figure}\n'
         },
         { icon: 'quote', label: 'Quote', insert: '\n\\begin{quote}\n  ' + CURSOR + '\n\\end{quote}\n' },
-        { icon: 'braces', label: 'Cases', insert: '\n\\begin{cases}\n  ' + CURSOR + ' & x > 0 \\\\\n  0 & \\text{otherwise}\n\\end{cases}\n' },
+        { icon: 'braces', label: 'Cases', math: true, insert: '\n\\begin{cases}\n  ' + CURSOR + ' & x > 0 \\\\\n  0 & \\text{otherwise}\n\\end{cases}\n' },
         { icon: 'book-open', label: 'Theorem', insert: '\n\\begin{theorem}\n  ' + CURSOR + '\n\\end{theorem}\n' },
         { icon: 'book-open', label: 'Definition', insert: '\n\\begin{definition}\n  ' + CURSOR + '\n\\end{definition}\n' },
         { icon: 'check-circle-2', label: 'Proof', insert: '\n\\begin{proof}\n  ' + CURSOR + '\n\\end{proof}\n' },
@@ -2884,6 +2884,11 @@ Close with the main takeaway.
   function mathModeAt(source, index) {
     const text = String(source || '');
     const limit = Math.max(0, Math.min(Number(index) || 0, text.length));
+    /* A cursor sitting between the two dollars of a $$ pair is still inside
+       the display delimiters; the scanner would otherwise have closed them. */
+    if (limit > 0 && text.charAt(limit - 1) === '$' && text.charAt(limit) === '$') {
+      return true;
+    }
     let inline = false;
     let display = false;
     let environments = 0;
@@ -2977,29 +2982,83 @@ Close with the main takeaway.
     return found;
   }
 
+  function mathDelimiterSnippet(kind, hasSelection) {
+    const inner = hasSelection ? CURSOR : CURSOR + ' ';
+    return kind === 'display' ? '$$' + inner + '$$' : '$' + inner + '$';
+  }
+
+  function separateMathSnippet(snippet, startIndex, endIndex) {
+    const source = cm.getValue();
+    let text = snippet;
+    if (source.charAt(startIndex - 1) === '$' && text.charAt(0) === '$') {
+      text = ' ' + text;
+    }
+    if (source.charAt(endIndex) === '$' && /\$$/.test(text)) {
+      text += ' ';
+    }
+    return text;
+  }
+
   function wrapMath(kind) {
     if (!cm) return;
     const from = cm.getCursor('from');
-    if (mathModeAt(cm.getValue(), cm.indexFromPos(from))) {
+    const to = cm.getCursor('to');
+    const startIndex = cm.indexFromPos(from);
+    const endIndex = cm.indexFromPos(to);
+    if (mathModeAt(cm.getValue(), startIndex)) {
       toast('Already inside math mode — no extra $ added.', 'info');
       cm.focus();
       return;
     }
-    insertSnippet(kind === 'display' ? '$$' + CURSOR + '$$' : '$' + CURSOR + '$');
+    const snippet = mathDelimiterSnippet(kind, !!cm.getSelection());
+    insertSnippet(separateMathSnippet(snippet, startIndex, endIndex));
   }
 
   function insertSymbol(item, isMath) {
     if (!item || !cm) return;
-    let snippet = String(item.insert || '');
-    if (isMath && snippet.trim()) {
-      const cursor = cm.getCursor('from');
-      const index = cm.indexFromPos(cursor);
-      if (!mathModeAt(cm.getValue(), index)) {
-        const body = snippet.trim();
-        snippet = '$' + body + (body.indexOf(CURSOR) === -1 ? CURSOR : '') + '$ ';
+    const snippet = String(item.insert || '');
+    if (!snippet.trim()) return;
+
+    const from = cm.getCursor('from');
+    const to = cm.getCursor('to');
+    const startIndex = cm.indexFromPos(from);
+    const endIndex = cm.indexFromPos(to);
+    const inMath = mathModeAt(cm.getValue(), startIndex);
+
+    /* The Inline math / Display math items are complete expressions, not
+       symbols. Wrapping them again creates $$$$; inserting them inside math
+       creates nested delimiters. */
+    if (isMath && /^\s*\${1,2}/.test(snippet)) {
+      if (inMath) {
+        toast('Already inside math mode — no extra $ added.', 'info');
+        cm.focus();
+        return;
       }
+      const kind = /^\s*\$\$/.test(snippet) ? 'display' : 'inline';
+      const delimiter = mathDelimiterSnippet(kind, !!cm.getSelection());
+      insertSnippet(separateMathSnippet(delimiter, startIndex, endIndex));
+      return;
     }
-    insertSnippet(snippet);
+
+    /* Sections, equations, tables and other document blocks are invalid
+       inside an existing math expression. */
+    if (!isMath) {
+      if (inMath) {
+        toast('Move outside math mode before inserting a document block.', 'info');
+        cm.focus();
+        return;
+      }
+      insertSnippet(snippet);
+      return;
+    }
+
+    let text = snippet;
+    if (!inMath) {
+      const body = snippet.trim();
+      text = '$' + body + (body.indexOf(CURSOR) === -1 ? CURSOR : '') + '$ ';
+      text = separateMathSnippet(text, startIndex, endIndex);
+    }
+    insertSnippet(text);
   }
 
   function insertSnippet(snippet) {
@@ -3351,7 +3410,7 @@ Close with the main takeaway.
       if (!group) return;
       const item = group.items[Number(button.dataset.index)];
       if (!item) return;
-      const isMath = group.id !== 'structure';
+      const isMath = group.id !== 'structure' || item.math === true;
       insertSymbol(item, isMath);
       rememberSymbol(item, isMath);
       announceSymbolInsert(item);
