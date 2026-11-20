@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.2.0] - 2026-11-20
+
+### Added
+
+- **Bibliography and citations.** Import or paste BibTeX in the new Bibliography panel; entries stay in this browser. The preview resolves `\cite`, `\citep`, `\citet`, `\citealp`, `\autocite`, `\parencite` and `\textcite`, numbers entries in citation order, appends a References list, and lists every citation plus the loaded library in the References tab.
+- **`\cite` autocomplete.** Typing a key inside `\cite{…}` and pressing Ctrl/Cmd + Space suggests matching bibliography keys.
+- **Missing-entry diagnostics.** A cited key without a bibliography entry is flagged in the preview, the Problems tab and the issue-count badge.
+- **Find and replace in the editor.** Ctrl/Cmd + F opens find, Ctrl/Cmd + H opens replace with regex, case and whole-word options from the CodeMirror search addon; a Find button in the editor toolbar opens the same bar, which docks at the bottom of the editor so it never covers the first lines.
+- **Tighter math export.** SVG and PNG now crop to the formula's measured bounding box instead of the preview panel, add a 14 px margin, offer a transparent-background option, and let PNG rasterize at 1×, 2× or 3×.
+
+### Fixed
+
+- Citation numbers skip keys that have no bibliography entry, so a missing `\cite` shows `[?]` instead of consuming a reference number.
+
 ## [1.1.0] - 2026-11-20
 
 ### Added

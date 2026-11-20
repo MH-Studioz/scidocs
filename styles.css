@@ -2700,6 +2700,105 @@ li.CodeMirror-hint-active {
 .math-export-preview .katex { font-size: 1.35em; }
 .math-export-empty { color: #64748B; font-size: 11px; }
 .doc-ref.is-missing { color: #DC2626; font-weight: 700; }
+.doc-cite.is-missing { color: #DC2626; font-weight: 700; }
+
+/* References list appended by \cite */
+.doc-bibliography {
+  margin-top: 28px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(15, 23, 42, 0.14);
+}
+.doc-bib-title {
+  margin: 0 0 8px;
+  color: #0F172A;
+  font-size: 1.05em;
+  font-weight: 700;
+}
+.doc-bib-list { margin: 0; padding-left: 20px; }
+.doc-bib-item { margin-bottom: 6px; font-size: 0.9em; line-height: 1.5; }
+.doc-bib-item.is-missing { color: #DC2626; }
+
+/* Math export options */
+.math-export-options { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.math-export-options .inline-check { margin: 6px 0; }
+.math-export-options .field-sm { width: 72px; height: 26px; padding: 2px 6px; font-size: 10px; }
+
+/* Bibliography panel */
+.bib-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.bib-toolbar-actions { margin-left: auto; display: flex; gap: 4px; }
+.bib-list { display: grid; gap: 6px; margin-top: 10px; max-height: 260px; overflow: auto; padding-right: 2px; }
+.bib-row {
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: rgba(15, 23, 42, 0.35);
+}
+.bib-row-head { display: flex; align-items: center; gap: 7px; }
+.bib-key { color: #C7D2FE; font: 10px var(--mono); }
+.bib-title { margin: 0; color: var(--text); font-size: 11px; line-height: 1.4; }
+.bib-row-foot { display: flex; align-items: center; gap: 8px; }
+.bib-meta { color: var(--muted); font-size: 9px; }
+.bib-uses { color: var(--muted-2); font: 9px var(--mono); }
+.bib-hint { margin: 8px 0 0; color: var(--muted-2); font-size: 10.5px; line-height: 1.55; }
+.bib-hint code {
+  padding: 1px 5px;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  background: rgba(2, 6, 23, 0.45);
+  color: #C7D2FE;
+  font-size: 10px;
+}
+.ref-row.is-static { cursor: default; }
+.ref-row.is-static:hover { background: transparent; }
+
+/* Find and replace dialog (CodeMirror addons) */
+.CodeMirror-dialog {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--line);
+  background: #0B1220;
+  color: var(--text);
+  font: 11px var(--mono);
+}
+.CodeMirror-dialog input.CodeMirror-search-field {
+  flex: 1;
+  min-width: 110px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #111A2E;
+  color: var(--text);
+  font: 11px var(--mono);
+}
+.CodeMirror-dialog input:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 0;
+}
+.CodeMirror-dialog button {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--primary-soft);
+  color: var(--text);
+  font: 10px var(--sans);
+  cursor: pointer;
+}
+.CodeMirror-dialog button:hover { background: rgba(99, 102, 241, 0.26); }
+.CodeMirror-search-hint { color: var(--muted-2); font-size: 9px; }
+@media (max-width: 640px) {
+  .CodeMirror-search-hint { display: none; }
+}
 
 @media (max-width: 640px) {
   .snippet-form-grid { grid-template-columns: 1fr; }

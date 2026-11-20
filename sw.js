@@ -1,10 +1,10 @@
 /* SciDocs offline shell. Bump CACHE when app.js, styles.css or the shell changes. */
-const CACHE = 'scidocs-v1.1.0';
+const CACHE = 'scidocs-v1.2.0';
 const CORE = [
   './',
   './index.html',
-  './styles.css?v=1.1.0',
-  './app.js?v=1.1.0',
+  './styles.css?v=1.2.0',
+  './app.js?v=1.2.0',
   './manifest.webmanifest',
   './icon-192.png',
   './icon-512.png'
@@ -14,6 +14,7 @@ const CDN = [
   'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css',
   'https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css',
   'https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/show-hint.min.css',
+  'https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/dialog/dialog.min.css',
   'https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js',
   'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js',
   'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js',
@@ -23,6 +24,9 @@ const CDN = [
   'https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/closebrackets.min.js',
   'https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/selection/active-line.min.js',
   'https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/show-hint.min.js',
+  'https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/dialog/dialog.min.js',
+  'https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/searchcursor.min.js',
+  'https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/search.min.js',
   'https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js',
   'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap'
 ];

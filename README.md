@@ -2,7 +2,7 @@
 
 https://mh-studioz.github.io/scidocs/
 
-v1.1.0
+v1.2.0
 
 [Release notes](CHANGELOG.md)
 
@@ -77,7 +77,31 @@ Open **Snippets** in the top bar to save reusable LaTeX fragments. Give each sni
 Select a formula (or place the cursor on its line) and open **Math** in the top bar. The dialog normalizes common `$…$`, `$$…$$`, `\(…\)` and `\[…\]` delimiters and shows a live KaTeX preview. Toggle **Display style** for a centered equation.
 
 - **Copy LaTeX** copies the normalized formula; **Copy MathML** copies accessible MathML.
-- **SVG** downloads a vector export; **PNG** downloads a 2× raster image on a white background. Both render from the browser’s MathML support; PNG rasterizes that SVG through a canvas.
+- **SVG** downloads a vector export; **PNG** rasterizes it through a canvas. Both render from the browser’s MathML support and crop to the formula itself with a 14 px margin, so there is no empty panel around the result.
+- **Transparent background** keeps the margin and glyphs but drops the white field, which suits slides and dark posters.
+- **PNG scale** exports at 1×, 2× (default) or 3× for print-quality images.
+
+## Bibliography and citations
+
+The **Bibliography** button (bookmark icon in the top bar) holds a local BibTeX library. Click **Import .bib** to load a file, or paste BibTeX into the textarea; edits save automatically in this browser. The panel lists every parsed entry with its type, author, year and how many times the document cites it, and each entry has a **Cite** button that inserts `\cite{key}` at the cursor.
+
+In the document, the preview resolves `\cite`, `\citep`, `\citet`, `\citealp`, `\autocite`, `\parencite` and `\textcite`:
+
+- Entries are numbered in order of first citation and shown as `[1]`, `[1, 2]` or `(1, 2)` for `\citep`.
+- A **References** list is appended to the rendered document in citation order.
+- `\citet{key}` prints the first author and year. Optional note arguments such as `\cite[chap. 2]{key}` are accepted but not printed.
+- A key with no bibliography entry renders as `[?]` and is reported in **Problems** and the issue-count badge.
+- Typing `\cite{` and pressing **Ctrl/Cmd + Space** autocompletes from the library; commas add further keys.
+
+The **References** tab in **Problems** shows citations, the loaded library and the missing keys. Parsing is approximate: BibTeX strings, cross-references and complex LaTeX in fields are flattened to plain text, and the numbering is the browser preview's own, not a BibTeX run.
+
+## Find and replace
+
+**Ctrl/Cmd + F** opens find and **Ctrl/Cmd + H** opens find-and-replace; the **Find** chip in the editor toolbar opens the same bar for touch use. The bar docks at the bottom of the editor so it never hides the line you are reading.
+
+- **Enter** jumps to the next match, **Shift + Enter** to the previous one.
+- Replace shows a confirm step with **Yes**, **No**, **All** and **Stop**, so you can replace one occurrence or all of them.
+- Type a pattern between slashes (`/energy\s*=/`) to use a regular expression; the bar also honours case and whole-word options.
 
 ## Text → LaTeX
 
@@ -124,6 +148,7 @@ If the model returns invalid KaTeX, SciDocs AI automatically sends one correctio
 ## Editor and files
 
 - **Ctrl + Space** (Windows/Linux) or **Cmd + Space** (macOS) suggests LaTeX commands while typing. If macOS Spotlight captures `Cmd + Space`, use **Alt + /**.
+- **Ctrl/Cmd + F** opens find and **Ctrl/Cmd + H** opens find and replace in the editor.
 - The **Symbol Lab** search accepts `/sigma`, `\sigma` or `sigma`; symbols are wrapped in math automatically when the cursor is outside math. The **Inline math** and **Display math** items, and the toolbar wrap buttons, never add duplicate delimiters.
 - **Guide** in the top bar covers math mode, symbol insertion, errors, history, sharing and shortcuts.
 - **Import** loads a `.tex` file into the editor; **.tex** downloads the current source.
@@ -148,7 +173,7 @@ SciDocs registers a small service worker after the first visit. The app shell, i
 
 ## Preview scope
 
-The live preview is a fast browser renderer, not a full TeX distribution. Core math and KaTeX commands, sections, lists, tables, links, common formatting, custom macros and the built-in science notation work. Arbitrary packages, BibTeX, multi-file `\input`, exact journal layout, custom fonts and full TikZ are outside the preview. Unsupported commands may appear as text or be ignored. For a submission that depends on those features, download the `.tex` source and compile it in your TeX editor or Overleaf. The **Info** button in the top bar repeats this scope inside the app.
+The live preview is a fast browser renderer, not a full TeX distribution. Core math and KaTeX commands, sections, lists, tables, links, common formatting, custom macros, citations with a generated reference list, and the built-in science notation work. Arbitrary packages, BibTeX, multi-file `\input`, exact journal layout, custom fonts and full TikZ are outside the preview. Unsupported commands may appear as text or be ignored. For a submission that depends on those features, download the `.tex` source and compile it in your TeX editor or Overleaf. The **Info** button in the top bar repeats this scope inside the app.
 
 ## Share links
 

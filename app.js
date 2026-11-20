@@ -14,6 +14,8 @@
   const SNAPSHOT_LIMIT = 20;
   const SNIPPETS_KEY = 'scidocs.snippets.v1';
   const SNIPPET_LIMIT = 50;
+  const BIB_KEY = 'scidocs.bib.v1';
+  const BIB_LIMIT = 400;
 
   /* ------------------------------------------------------------------ *
    *  DOM helpers
@@ -2051,8 +2053,9 @@ Close with the main takeaway.
       mbox: (a) => hold(inline(a)),
       underline: (a) => hold('<span class="doc-underline">' + inline(a) + '</span>'),
       footnote: (a) => hold('<sup class="doc-footnote">' + inline(a) + '</sup>'),
-      cite: (a) => hold('<span class="doc-cite">[' + escapeHtml(a) + ']</span>'),
-      citep: (a) => hold('<span class="doc-cite">(' + escapeHtml(a) + ')</span>'),
+      cite: (a) => hold(citationLabel(a, ctx, 'bracket').html),
+      citep: (a) => hold(citationLabel(a, ctx, 'paren').html),
+      citet: (a) => hold(citationLabel(a, ctx, 'text').html),
       dna: (a) => hold(sequenceHtml(a, false, false)),
       rna: (a) => hold(sequenceHtml(a, false, true)),
       dnac: (a) => hold(sequenceHtml(a, true, false)),
@@ -2676,6 +2679,225 @@ Close with the main takeaway.
     return { labels, refs, labelMap, duplicates, missing, unused, equation, figure, table };
   }
 
+  /* ------------------------------------------------------------------ *
+   *  Bibliography (local BibTeX library, parsed approximately)
+   * ------------------------------------------------------------------ */
+  function readBibText() {
+    try {
+      return localStorage.getItem(BIB_KEY) || '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function writeBibText(text) {
+    try {
+      localStorage.setItem(BIB_KEY, String(text || '').slice(0, 200000));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function readBibEntries() {
+    return parseBibEntries(readBibText());
+  }
+
+  function bibBlockEnd(src, open) {
+    const opener = src[open];
+    const closer = opener === '{' ? '}' : ')';
+    let depth = 0;
+    for (let i = open; i < src.length; i++) {
+      const ch = src[i];
+      if (ch === '\\') { i += 1; continue; }
+      if (ch === opener) depth += 1;
+      else if (ch === closer) {
+        depth -= 1;
+        if (depth === 0) return i;
+      }
+    }
+    return -1;
+  }
+
+  function cleanBibValue(value) {
+    return String(value || '')
+      .replace(/\\['"`^~=.]\s*\{?([A-Za-z])\}?/g, '$1')
+      .replace(/\\&/g, '&')
+      .replace(/\\%/g, '%')
+      .replace(/\\_/g, '_')
+      .replace(/\\[A-Za-z]+\s*/g, ' ')
+      .replace(/[{}]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function parseBibFields(body) {
+    const src = String(body || '');
+    const fields = {};
+    let i = 0;
+    while (i < src.length) {
+      const nameMatch = /^\s*,?\s*([A-Za-z][A-Za-z0-9_-]*)\s*=\s*/.exec(src.slice(i));
+      if (!nameMatch) {
+        const next = src.indexOf(',', i);
+        if (next < 0) break;
+        i = next + 1;
+        continue;
+      }
+      const name = nameMatch[1].toLowerCase();
+      let k = i + nameMatch[0].length;
+      let value = '';
+      if (src[k] === '{') {
+        const end = bibBlockEnd(src, k);
+        if (end < 0) break;
+        value = src.slice(k + 1, end);
+        k = end + 1;
+      } else if (src[k] === '"') {
+        const end = src.indexOf('"', k + 1);
+        if (end < 0) break;
+        value = src.slice(k + 1, end);
+        k = end + 1;
+      } else {
+        const end = src.indexOf(',', k);
+        value = src.slice(k, end < 0 ? src.length : end);
+        k = end < 0 ? src.length : end;
+      }
+      fields[name] = cleanBibValue(value);
+      i = k;
+    }
+    return fields;
+  }
+
+  function parseBibEntries(text) {
+    const src = String(text || '');
+    const entries = [];
+    const seen = new Set();
+    let at = src.indexOf('@');
+    while (at >= 0 && entries.length < BIB_LIMIT) {
+      const head = /^@([A-Za-z]+)\s*([{(])/.exec(src.slice(at, at + 60));
+      if (!head) {
+        at = src.indexOf('@', at + 1);
+        continue;
+      }
+      const open = at + head[0].length - 1;
+      const close = bibBlockEnd(src, open);
+      if (close < 0) break;
+      const type = head[1].toLowerCase();
+      if (type !== 'comment' && type !== 'preamble' && type !== 'string') {
+        const inner = src.slice(open + 1, close);
+        const comma = inner.indexOf(',');
+        const key = (comma < 0 ? inner : inner.slice(0, comma)).trim();
+        if (key && !seen.has(key)) {
+          seen.add(key);
+          entries.push(Object.assign({ key, type }, parseBibFields(comma < 0 ? '' : inner.slice(comma + 1))));
+        }
+      }
+      at = src.indexOf('@', close + 1);
+    }
+    return entries;
+  }
+
+  function bibAuthor(entry) {
+    const raw = String((entry && (entry.author || entry.editor)) || '').trim();
+    if (!raw) return '';
+    const parts = raw.split(/\s+and\s+/i).map((part) => part.trim()).filter(Boolean);
+    const surname = (part) => {
+      if (part.indexOf(',') >= 0) return part.split(',')[0].trim();
+      const words = part.split(/\s+/);
+      return words[words.length - 1] || part;
+    };
+    const names = parts.map(surname);
+    if (names.length > 3) return names[0] + ' et al.';
+    if (names.length === 2) return names[0] + ' & ' + names[1];
+    return names.join(', ');
+  }
+
+  function formatBibEntry(entry) {
+    if (!entry) return '';
+    const author = bibAuthor(entry);
+    const head = author
+      ? author + (entry.year ? ' (' + entry.year + ')' : '')
+      : entry.year ? '(' + entry.year + ')' : '';
+    const venue = entry.journal || entry.booktitle || entry.publisher || entry.school || entry.institution || '';
+    const bits = [];
+    if (head) bits.push(head + '.');
+    if (entry.title) bits.push(entry.title.replace(/\.$/, '') + '.');
+    if (venue) bits.push(venue.replace(/\.$/, '') + '.');
+    const tail = entry.doi ? ' doi:' + entry.doi : entry.url ? ' ' + entry.url : '';
+    return (bits.join(' ') || entry.key) + tail;
+  }
+
+  function parseCitations(source) {
+    const lines = String(source || '').split('\n');
+    const order = [];
+    const counts = new Map();
+    const occurrences = [];
+    const citeRe = /\\(?:cite|citep|citet|citealp|autocite|parencite|textcite)\*?\s*(?:\[[^\]]*\]\s*){0,2}\{([^}]*)\}/g;
+    lines.forEach((rawLine, lineIndex) => {
+      const line = sourceLineWithoutComment(rawLine);
+      let match;
+      citeRe.lastIndex = 0;
+      while ((match = citeRe.exec(line)) !== null) {
+        String(match[1] || '').split(',').map((key) => key.trim()).filter(Boolean).forEach((key) => {
+          if (!counts.has(key)) order.push(key);
+          counts.set(key, (counts.get(key) || 0) + 1);
+          occurrences.push({ name: key, line: lineIndex + 1 });
+        });
+      }
+    });
+    const entryMap = new Map(readBibEntries().map((entry) => [entry.key, entry]));
+    const numbers = new Map();
+    let nextNumber = 0;
+    order.forEach((key) => {
+      if (!entryMap.has(key)) return;
+      nextNumber += 1;
+      numbers.set(key, nextNumber);
+    });
+    const missing = order.filter((key) => !entryMap.has(key));
+    return { order, counts, occurrences, missing, entryMap, numbers };
+  }
+
+  function citeKeys(raw) {
+    return String(raw || '').split(',').map((key) => key.trim()).filter(Boolean);
+  }
+
+  function citationLabel(raw, ctx, style) {
+    const keys = citeKeys(raw);
+    const citations = ctx && ctx.citations;
+    if (!keys.length) {
+      return { html: '<span class="doc-cite is-missing">[?]</span>', missing: true };
+    }
+    let missing = false;
+    const parts = keys.map((key) => {
+      const known = citations && citations.entryMap ? citations.entryMap.has(key) : false;
+      const number = known && citations.numbers ? citations.numbers.get(key) : null;
+      if (!number) { missing = true; return '?'; }
+      return String(number);
+    });
+    const label = parts.slice().sort((a, b) => {
+      if (a === '?' || b === '?') return 0;
+      return Number(a) - Number(b);
+    }).join(', ');
+    const cls = 'doc-cite' + (missing ? ' is-missing' : '');
+    if (style === 'paren') return { html: '<span class="' + cls + '">(' + escapeHtml(label) + ')</span>', missing };
+    if (style === 'text') {
+      const entry = citations && citations.entryMap ? citations.entryMap.get(keys[0]) : null;
+      const who = entry ? bibAuthor(entry) : keys[0];
+      const year = entry && entry.year ? ' (' + entry.year + ')' : '';
+      return { html: '<span class="' + cls + '">' + escapeHtml(who + year) + '</span>', missing };
+    }
+    return { html: '<span class="' + cls + '">[' + escapeHtml(label) + ']</span>', missing };
+  }
+
+  function bibliographyHtml(citations) {
+    const items = citations.order
+      .filter((key) => citations.entryMap.has(key))
+      .map((key) => '<li class="doc-bib-item">' + escapeHtml(formatBibEntry(citations.entryMap.get(key))) + '</li>')
+      .join('');
+    return '<section class="doc-bibliography" aria-label="References">' +
+      '<h2 class="doc-bib-title">References</h2>' +
+      '<ol class="doc-bib-list">' + items + '</ol></section>';
+  }
+
   function parseOutline(source) {
     const lines = String(source || '').split('\n');
     const items = [];
@@ -2706,6 +2928,8 @@ Close with the main takeaway.
     const ctx = makeCtx({});
     ctx.macros = collectUserMacros(src);
     ctx.references = parseReferenceIndex(src);
+    ctx.citations = parseCitations(src);
+    ctx.bibliography = Array.from(ctx.citations.entryMap.values());
 
     const beginMatch = /\\begin\s*\{document\}/.exec(src);
     let preamble = '';
@@ -2742,6 +2966,11 @@ Close with the main takeaway.
       html =
         '<div class="doc-empty"><strong>Render failed</strong><span>' +
         escapeHtml(String((err && err.message) || err)) + '</span></div>';
+    }
+
+    if (ctx.citations.order.some((key) => ctx.citations.entryMap.has(key)) &&
+      !/\\begin\s*\{thebibliography\}/.test(body)) {
+      html += bibliographyHtml(ctx.citations);
     }
 
     if (ctx.meta.title && !/\\maketitle\b/.test(body)) {
@@ -3098,6 +3327,16 @@ Close with the main takeaway.
         line: label.line
       });
     });
+    const citations = (ctx && ctx.citations) || { missing: [], occurrences: [] };
+    (citations.missing || []).forEach((key) => {
+      const first = (citations.occurrences || []).find((entry) => entry.name === key);
+      add({
+        severity: 'error',
+        msg: 'Missing bibliography entry “' + key + '”.',
+        hint: 'Import a .bib file or add the entry in Bibliography.',
+        line: first && first.line
+      });
+    });
     (index.unused || []).forEach((label) => add({
       severity: 'info',
       msg: 'Unused label “' + label.name + '”.',
@@ -3159,7 +3398,7 @@ Close with the main takeaway.
       '<i data-lucide="' + (icons[item.type] || 'dot') + '"></i><span>' + escapeHtml(item.title) + '</span><span class="issue-line">Ln ' + item.line + '</span></button>').join('');
   }
 
-  function referenceRows(refs) {
+  function referenceRows(refs, ctx) {
     const used = {};
     (refs.refs || []).forEach((ref) => { used[ref.name] = (used[ref.name] || 0) + 1; });
     const labelRows = (refs.labels || []).length
@@ -3172,10 +3411,34 @@ Close with the main takeaway.
       ? refs.missing.map((ref) => '<button class="ref-row is-missing" type="button" data-jump-line="' + ref.line + '">' +
         '<span class="ref-name">' + escapeHtml(ref.name) + '</span><span class="ref-kind">missing · Ln ' + ref.line + '</span></button>').join('')
       : '<p class="panel-empty-inline">No missing references.</p>';
+    const citations = (ctx && ctx.citations) || parseCitations(cm ? cm.getValue() : '');
+    const bibEntries = Array.from(citations.entryMap ? citations.entryMap.values() : []);
+    const citeRows = (citations.order || []).length
+      ? citations.order.map((key) => {
+        const entry = citations.entryMap.get(key);
+        const first = (citations.occurrences || []).find((item) => item.name === key);
+        const uses = citations.counts.get(key) || 0;
+        const number = citations.numbers ? citations.numbers.get(key) : null;
+        return '<button class="ref-row' + (entry ? '' : ' is-missing') + '" type="button"' +
+          (first ? ' data-jump-line="' + first.line + '"' : '') + '>' +
+          '<span class="ref-name">' + escapeHtml(key) + '</span>' +
+          '<span class="ref-kind">' + (entry ? '[' + number + ']' + (entry.year ? ' · ' + escapeHtml(entry.year) : '') : 'missing entry') + '</span>' +
+          '<span class="ref-uses">' + uses + ' cite' + (uses === 1 ? '' : 's') + '</span></button>';
+      }).join('')
+      : '<p class="panel-empty-inline">No \\cite commands yet. Add \\cite{key} or open Bibliography to import a .bib file.</p>';
+    const bibRows = bibEntries.length
+      ? bibEntries.slice(0, 60).map((entry) => '<div class="ref-row is-static">' +
+        '<span class="ref-name">' + escapeHtml(entry.key) + '</span>' +
+        '<span class="ref-kind">' + escapeHtml(entry.type) + (entry.year ? ' · ' + escapeHtml(entry.year) : '') + '</span>' +
+        '<span class="ref-uses">' + (citations.counts.get(entry.key) || 0) + ' use' + ((citations.counts.get(entry.key) || 0) === 1 ? '' : 's') + '</span></div>').join('')
+      : '<p class="panel-empty-inline">No bibliography loaded. Open Bibliography to import or paste BibTeX.</p>';
     return '<div class="ref-summary">' +
       '<span><strong>' + (refs.labels || []).length + '</strong> labels</span>' +
       '<span><strong>' + (refs.refs || []).length + '</strong> references</span>' +
-      '<span><strong>' + (refs.missing || []).length + '</strong> missing</span></div>' +
+      '<span><strong>' + (refs.missing || []).length + '</strong> missing</span>' +
+      '<span><strong>' + (citations.order || []).length + '</strong> citations</span></div>' +
+      '<section class="ref-section"><h4>Citations</h4>' + citeRows + '</section>' +
+      '<section class="ref-section"><h4>Bibliography library · ' + bibEntries.length + ' entries</h4>' + bibRows + '</section>' +
       '<section class="ref-section"><h4>Defined labels</h4>' + labelRows + '</section>' +
       '<section class="ref-section"><h4>Missing references</h4>' + missingRows + '</section>';
   }
@@ -3190,7 +3453,10 @@ Close with the main takeaway.
     if (problemsTab === 'outline') {
       view.innerHTML = outlineRows(parseOutline(cm ? cm.getValue() : ''));
     } else if (problemsTab === 'references') {
-      view.innerHTML = referenceRows(refs || parseReferenceIndex(cm ? cm.getValue() : ''));
+      view.innerHTML = referenceRows(
+        refs || parseReferenceIndex(cm ? cm.getValue() : ''),
+        state && state.result ? state.result.ctx : null
+      );
     } else {
       view.innerHTML = issueRows(items);
     }
@@ -3584,6 +3850,29 @@ Close with the main takeaway.
   function latexHint(instance) {
     const cur = instance.getCursor();
     const lineBefore = instance.getLine(cur.line).slice(0, cur.ch);
+    const citeMatch = /\\(?:cite|citep|citet|citealp|autocite|parencite|textcite)\*?\s*(?:\[[^\]]*\]\s*){0,2}\{([^}]*)$/.exec(lineBefore);
+    if (citeMatch) {
+      const raw = citeMatch[1];
+      const commaAt = raw.lastIndexOf(',');
+      const done = new Set(raw.slice(0, commaAt + 1).split(',').map((key) => key.trim()).filter(Boolean));
+      const tail = raw.slice(commaAt + 1);
+      const lead = (tail.match(/^\s*/) || [''])[0].length;
+      const term = tail.trim().toLowerCase();
+      const keys = readBibEntries()
+        .filter((entry) => !done.has(entry.key) && entry.key.toLowerCase().startsWith(term));
+      if (keys.length) {
+        return {
+          list: keys.slice(0, 40).map((entry) => ({
+            text: entry.key,
+            displayText: entry.key + (entry.year ? ' · ' + entry.year : ''),
+            className: 'cite-hint'
+          })),
+          from: window.CodeMirror.Pos(cur.line, cur.ch - tail.length + lead),
+          to: cur
+        };
+      }
+    }
+
     const refMatch = /\\(ref|eqref|autoref|pageref)\s*\{([^}]*)$/.exec(lineBefore);
     if (refMatch) {
       const term = refMatch[2].toLowerCase();
@@ -3671,7 +3960,14 @@ Close with the main takeaway.
         'Ctrl-K': () => openNlp(),
         'Ctrl-Space': showLatexHint,
         'Cmd-Space': showLatexHint,
-        'Alt-/': showLatexHint
+        'Alt-/': showLatexHint,
+        'Ctrl-F': 'findPersistent',
+        'Cmd-F': 'findPersistent',
+        'Ctrl-H': 'replace',
+        'Cmd-Alt-F': 'replace',
+        'Shift-Ctrl-F': 'replace',
+        'F3': 'findPersistentNext',
+        'Shift-F3': 'findPersistentPrev'
       }
     });
 
@@ -4820,6 +5116,90 @@ Close with the main takeaway.
     return text;
   }
 
+  /* ------------------------------------------------------------------ *
+   *  Bibliography panel
+   * ------------------------------------------------------------------ */
+  let bibSaveTimer = null;
+
+  function renderBibLibrary() {
+    const source = $('#bibSource');
+    const entries = parseBibEntries(source ? source.value : readBibText());
+    const count = $('#bibCount');
+    if (count) count.textContent = entries.length + (entries.length === 1 ? ' entry' : ' entries');
+    const list = $('#bibList');
+    if (!list) return;
+    if (!entries.length) {
+      list.innerHTML = '<div class="panel-empty"><i data-lucide="book-marked"></i><strong>No bibliography yet</strong>' +
+        '<span>Import a .bib file or paste BibTeX above, then cite entries with \\cite{key}.</span></div>';
+      refreshIcons();
+      return;
+    }
+    const counts = cm ? parseCitations(cm.getValue()).counts : new Map();
+    list.innerHTML = entries.map((entry) => {
+      const uses = counts.get(entry.key) || 0;
+      return '<article class="bib-row">' +
+        '<div class="bib-row-head"><code class="bib-key">' + escapeHtml(entry.key) + '</code>' +
+        '<span class="badge-soft">' + escapeHtml(entry.type) + '</span></div>' +
+        '<p class="bib-title">' + escapeHtml(entry.title || 'Untitled') + '</p>' +
+        '<div class="bib-row-foot">' +
+        '<span class="bib-meta">' + escapeHtml([bibAuthor(entry), entry.year].filter(Boolean).join(' · ') || 'No author') + '</span>' +
+        '<span class="snippet-actions"><span class="bib-uses">' + uses + '×</span>' +
+        '<button class="btn btn-ghost btn-xs" type="button" data-cite-key="' + escapeHtml(entry.key) + '">Cite</button></span>' +
+        '</div></article>';
+    }).join('');
+    refreshIcons();
+  }
+
+  function openBibliography() {
+    const source = $('#bibSource');
+    if (source) source.value = readBibText();
+    renderBibLibrary();
+    openModal('#bibModal');
+  }
+
+  function saveBibField(quiet) {
+    const source = $('#bibSource');
+    if (!source) return false;
+    const ok = writeBibText(source.value);
+    renderBibLibrary();
+    renderNow();
+    if (!ok) toast('Bibliography could not be saved in this browser', 'warn');
+    else if (!quiet) toast('Bibliography saved', 'success');
+    return ok;
+  }
+
+  async function importBibFile(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast('That file is larger than 2 MB.', 'error');
+      return;
+    }
+    try {
+      const text = await file.text();
+      const entries = parseBibEntries(text);
+      if (!entries.length) {
+        toast('No BibTeX entries found in ' + file.name, 'warn');
+        return;
+      }
+      const source = $('#bibSource');
+      if (source) source.value = text;
+      saveBibField(true);
+      toast('Imported ' + entries.length + ' entr' + (entries.length === 1 ? 'y' : 'ies') + ' from ' + file.name, 'success');
+    } catch (_) {
+      toast('Could not read that file.', 'error');
+    }
+  }
+
+  function insertCitation(key) {
+    if (!cm || !key) return;
+    captureSnapshot('Before citation');
+    cm.replaceSelection('\\cite{' + key + '}');
+    cm.focus();
+    closeModal('#bibModal');
+    toast('Inserted \\cite{' + key + '}', 'success');
+  }
+
   function mathMlMarkup(clean, display) {
     if (!window.katex || !clean) return '';
     try {
@@ -4837,18 +5217,52 @@ Close with the main takeaway.
     }
   }
 
-  function mathSvgMarkup(clean, display) {
-    const preview = $('#mathExportPreview');
-    const rect = preview ? preview.getBoundingClientRect() : { width: 360, height: 80 };
-    const width = Math.max(80, Math.ceil(rect.width) + 32);
-    const height = Math.max(48, Math.ceil(rect.height) + 24);
+  function mathMlBox(clean, display) {
     const mathml = mathMlMarkup(clean, display);
-    if (!mathml) return '';
+    if (!mathml) return null;
+    const host = document.createElement('div');
+    host.setAttribute('aria-hidden', 'true');
+    host.style.cssText = 'position:fixed;left:-9999px;top:0;display:block;width:max-content;margin:0;padding:0;' +
+      'font-size:18px;line-height:1.25;white-space:nowrap;';
+    host.innerHTML = mathml;
+    const math = host.querySelector('math');
+    if (math) {
+      math.style.display = 'inline-block';
+      math.style.margin = '0';
+    }
+    document.body.appendChild(host);
+    const target = math || host;
+    const ink = target.getBoundingClientRect();
+    const hostBox = host.getBoundingClientRect();
+    document.body.removeChild(host);
+    const width = Math.ceil(Math.max(ink.width, hostBox.width));
+    const height = Math.ceil(Math.max(ink.height, hostBox.height));
+    if (!width || !height) return null;
+    return { mathml, width, height };
+  }
+
+  function mathExportOptions() {
+    const transparent = !!($('#mathExportTransparent') && $('#mathExportTransparent').checked);
+    const scaleBox = $('#mathExportScale');
+    const scale = Math.max(1, Math.min(3, Math.round(Number(scaleBox ? scaleBox.value : 2) || 2)));
+    return { transparent, scale };
+  }
+
+  function mathSvgMarkup(clean, display) {
+    const box = mathMlBox(clean, display);
+    if (!box) return '';
+    const options = mathExportOptions();
+    const pad = 14;
+    const width = box.width + pad * 2;
+    const height = box.height + pad * 2;
+    const background = options.transparent ? 'transparent' : '#ffffff';
     return '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height +
       '" viewBox="0 0 ' + width + ' ' + height + '">' +
       '<foreignObject x="0" y="0" width="100%" height="100%">' +
-      '<div xmlns="http://www.w3.org/1999/xhtml" style="box-sizing:border-box;width:100%;height:100%;padding:12px 16px;background:#ffffff;color:#111827;font-family:serif;font-size:18px;line-height:1.35;">' +
-      mathml + '</div></foreignObject></svg>';
+      '<div xmlns="http://www.w3.org/1999/xhtml" style="box-sizing:border-box;width:100%;height:100%;' +
+      'padding:' + pad + 'px;background:' + background + ';display:flex;align-items:center;justify-content:center;' +
+      'color:#111827;font-family:serif;font-size:18px;line-height:1.25;">' +
+      '<span style="display:inline-block;">' + box.mathml + '</span></div></foreignObject></svg>';
   }
 
   function renderMathExportPreview() {
@@ -4926,12 +5340,15 @@ Close with the main takeaway.
         img.onerror = reject;
         img.src = url;
       });
+      const options = mathExportOptions();
       const canvas = document.createElement('canvas');
-      canvas.width = Math.max(1, image.width * 2);
-      canvas.height = Math.max(1, image.height * 2);
+      canvas.width = Math.max(1, Math.round(image.width * options.scale));
+      canvas.height = Math.max(1, Math.round(image.height * options.scale));
       const context = canvas.getContext('2d');
-      context.fillStyle = '#ffffff';
-      context.fillRect(0, 0, canvas.width, canvas.height);
+      if (!options.transparent) {
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+      }
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
       if (!blob) throw new Error('PNG encoding failed');
@@ -5325,6 +5742,50 @@ Close with the main takeaway.
     $('#mathDownloadSvg').addEventListener('click', downloadMathSvg);
     $('#mathDownloadPng').addEventListener('click', downloadMathPng);
     $('#nlpBtn').addEventListener('click', openNlp);
+    const findBtn = $('#findBtn');
+    if (findBtn) {
+      findBtn.addEventListener('click', () => {
+        if (!cm) return;
+        cm.focus();
+        if (cm.execCommand) cm.execCommand('findPersistent');
+      });
+    }
+    const bibBtn = $('#bibBtn');
+    if (bibBtn) bibBtn.addEventListener('click', openBibliography);
+    const bibSource = $('#bibSource');
+    if (bibSource) {
+      bibSource.addEventListener('input', () => {
+        clearTimeout(bibSaveTimer);
+        bibSaveTimer = setTimeout(() => saveBibField(true), 450);
+      });
+    }
+    const bibImport = $('#bibImport');
+    if (bibImport) {
+      bibImport.addEventListener('click', () => {
+        const input = $('#bibFileInput');
+        if (input) { input.value = ''; input.click(); }
+      });
+    }
+    const bibFile = $('#bibFileInput');
+    if (bibFile) bibFile.addEventListener('change', importBibFile);
+    const bibClear = $('#bibClear');
+    if (bibClear) {
+      bibClear.addEventListener('click', () => {
+        if (!window.confirm('Remove every bibliography entry from this browser?')) return;
+        writeBibText('');
+        if (bibSource) bibSource.value = '';
+        renderBibLibrary();
+        renderNow();
+        toast('Bibliography cleared', 'info');
+      });
+    }
+    const bibList = $('#bibList');
+    if (bibList) {
+      bibList.addEventListener('click', (event) => {
+        const cite = event.target.closest('[data-cite-key]');
+        if (cite) insertCitation(cite.dataset.citeKey);
+      });
+    }
 
     const symbolSearch = $('#symbolSearch');
     if (symbolSearch) {

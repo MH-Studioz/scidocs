@@ -21,7 +21,8 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/show-hint.min.css" />
-  <link rel="stylesheet" href="styles.css?v=1.1.0" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/dialog/dialog.min.css" />
+  <link rel="stylesheet" href="styles.css?v=1.2.0" />
 
   <script defer src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
@@ -32,8 +33,11 @@
   <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/closebrackets.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/selection/active-line.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/show-hint.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/dialog/dialog.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/searchcursor.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/search.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
-  <script defer src="app.js?v=1.1.0"></script>
+  <script defer src="app.js?v=1.2.0"></script>
 </head>
 
 <body class="app">
@@ -95,6 +99,9 @@
       </button>
       <button class="btn btn-ghost btn-icon-only" type="button" id="snippetsBtn" title="Snippet and macro library" aria-label="Snippet and macro library">
         <i data-lucide="library"></i>
+      </button>
+      <button class="btn btn-ghost btn-icon-only" type="button" id="bibBtn" title="Bibliography and citations" aria-label="Bibliography and citations">
+        <i data-lucide="book-marked"></i>
       </button>
       <button class="btn btn-ghost btn-icon-only" type="button" id="guideBtn" title="SciDocs user guide" aria-label="SciDocs user guide">
         <i data-lucide="book-open"></i>
@@ -174,6 +181,9 @@
           </button>
           <button class="chip-btn" type="button" id="copyBtn" title="Copy raw LaTeX to the clipboard">
             <i data-lucide="copy"></i><span>Copy</span>
+          </button>
+          <button class="chip-btn" type="button" id="findBtn" title="Find and replace (Ctrl/Cmd + F)">
+            <i data-lucide="search"></i><span>Find</span>
           </button>
         </div>
       </div>
@@ -335,7 +345,7 @@ $$\sigma * 8$$     → display math</pre>
 
         <section class="guide-section">
           <h3>6. Keyboard shortcuts</h3>
-          <p><code>Ctrl/Cmd + Enter</code> compile · <code>Ctrl/Cmd + S</code> save · <code>Ctrl/Cmd + Space</code> command suggestions · <code>Alt + /</code> fallback when Spotlight captures Cmd + Space · <code>Ctrl/Cmd + K</code> Text → LaTeX.</p>
+          <p><code>Ctrl/Cmd + Enter</code> compile · <code>Ctrl/Cmd + S</code> save · <code>Ctrl/Cmd + Space</code> command suggestions · <code>Alt + /</code> fallback when Spotlight captures Cmd + Space · <code>Ctrl/Cmd + F</code> find · <code>Ctrl/Cmd + H</code> find and replace · <code>Ctrl/Cmd + K</code> Text → LaTeX.</p>
         </section>
       </div>
       <div class="modal-foot">
@@ -435,11 +445,21 @@ $$\sigma * 8$$     → display math</pre>
         <label class="field-label" for="mathExportSource">LaTeX formula</label>
         <textarea class="field field-area mono" id="mathExportSource" rows="4" spellcheck="false"></textarea>
         <label class="inline-check"><input type="checkbox" id="mathExportDisplay" /> Display style</label>
+        <div class="math-export-options">
+          <label class="inline-check"><input type="checkbox" id="mathExportTransparent" /> Transparent background</label>
+          <label class="inline-check" for="mathExportScale">PNG scale
+            <select class="field field-sm" id="mathExportScale" aria-label="PNG scale">
+              <option value="1">1×</option>
+              <option value="2" selected>2×</option>
+              <option value="3">3×</option>
+            </select>
+          </label>
+        </div>
         <div class="math-export-preview" id="mathExportPreview" aria-live="polite"></div>
         <p class="hint" id="mathExportNote">Select a formula in the editor, or edit it here.</p>
       </div>
       <div class="modal-foot">
-        <p class="hint">SVG and PNG use the browser's MathML renderer.</p>
+        <p class="hint">Exports crop to the formula and add a small margin.</p>
         <div class="modal-actions">
           <button class="btn btn-ghost" type="button" id="mathCopyLatex">Copy LaTeX</button>
           <button class="btn btn-ghost" type="button" id="mathCopyMathml">Copy MathML</button>
@@ -447,6 +467,43 @@ $$\sigma * 8$$     → display math</pre>
           <button class="btn btn-ghost" type="button" id="mathDownloadPng">PNG</button>
           <button class="btn btn-primary" type="button" data-close-modal>Close</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== BIBLIOGRAPHY MODAL ============================== -->
+  <div class="modal-backdrop" id="bibModal" hidden>
+    <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="bibTitle">
+      <div class="modal-head">
+        <span class="modal-icon"><i data-lucide="book-marked"></i></span>
+        <div class="modal-title">
+          <h2 id="bibTitle">Bibliography</h2>
+          <p>Import or paste BibTeX, then cite entries from the editor.</p>
+        </div>
+        <button class="icon-btn" type="button" data-close-modal aria-label="Close"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="bib-toolbar">
+          <span class="hint" id="bibCount">0 entries</span>
+          <span class="bib-toolbar-actions">
+            <input type="file" id="bibFileInput" accept=".bib,.txt,text/plain" hidden />
+            <button class="btn btn-ghost btn-xs" type="button" id="bibImport">Import .bib</button>
+            <button class="btn btn-ghost btn-xs" type="button" id="bibClear">Clear</button>
+          </span>
+        </div>
+        <label class="field-label" for="bibSource">BibTeX</label>
+        <textarea class="field field-area mono" id="bibSource" rows="6" spellcheck="false" placeholder="@article{smith2020,
+  author  = {Smith, Jane},
+  title   = {A study of things},
+  year    = {2020},
+  journal = {Journal of Things}
+}"></textarea>
+        <p class="bib-hint">Stored in this browser only. Cite with <code class="mono">\cite{key}</code> and press <code class="mono">Ctrl/Cmd + Space</code> after the brace to autocomplete keys.</p>
+        <div class="bib-list" id="bibList"></div>
+      </div>
+      <div class="modal-foot">
+        <p class="hint">The preview numbers citations in order and appends a References list.</p>
+        <div class="modal-actions"><button class="btn btn-ghost" type="button" data-close-modal>Close</button></div>
       </div>
     </div>
   </div>
