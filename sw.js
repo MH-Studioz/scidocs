@@ -1,10 +1,10 @@
 /* SciDocs offline shell. Bump CACHE when app.js, styles.css or the shell changes. */
-const CACHE = 'scidocs-v32';
+const CACHE = 'scidocs-v34';
 const CORE = [
   './',
   './index.html',
-  './styles.css?v=32',
-  './app.js?v=32',
+  './styles.css?v=34',
+  './app.js?v=34',
   './manifest.webmanifest',
   './icon-192.png',
   './icon-512.png'

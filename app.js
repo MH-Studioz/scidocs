@@ -3029,6 +3029,12 @@ Close with the main takeaway.
     renderRecent();
   }
 
+  function announceSymbolInsert(item) {
+    if (!window.matchMedia || !window.matchMedia('(max-width: 1100px)').matches) return;
+    const label = String(item.label || item.display || item.insert || 'symbol').trim();
+    toast('Inserted ' + label + ' at the cursor', 'success');
+  }
+
   function renderRecent() {
     const panel = $('#recentPanel');
     const grid = $('#recentSymbols');
@@ -3120,6 +3126,7 @@ Close with the main takeaway.
       if (!item) return;
       insertSnippet(item.insert);
       rememberSymbol(item);
+      announceSymbolInsert(item);
     });
   }
 
@@ -4279,7 +4286,26 @@ Close with the main takeaway.
 
     const symbolSearch = $('#symbolSearch');
     if (symbolSearch) {
-      symbolSearch.addEventListener('input', () => filterSymbols(symbolSearch.value));
+      const symbolClear = $('#symbolClear');
+      const syncSymbolClear = () => {
+        const hasQuery = !!symbolSearch.value;
+        if (symbolClear) symbolClear.hidden = !hasQuery;
+        const wrap = symbolSearch.closest('.sidebar-search');
+        if (wrap) wrap.classList.toggle('has-query', hasQuery);
+      };
+      symbolSearch.addEventListener('input', () => {
+        filterSymbols(symbolSearch.value);
+        syncSymbolClear();
+      });
+      if (symbolClear) {
+        symbolClear.addEventListener('click', () => {
+          symbolSearch.value = '';
+          filterSymbols('');
+          syncSymbolClear();
+          symbolSearch.focus();
+        });
+      }
+      syncSymbolClear();
     }
 
     const recentGrid = $('#recentSymbols');
@@ -4291,6 +4317,7 @@ Close with the main takeaway.
         if (!item) return;
         insertSnippet(item.insert);
         rememberSymbol(item);
+        announceSymbolInsert(item);
       });
     }
     renderRecent();

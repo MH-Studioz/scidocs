@@ -593,8 +593,38 @@ body.sidebar-collapsed .sidebar {
 }
 
 .sidebar-search input::-webkit-search-cancel-button {
-  filter: invert(0.6);
+  display: none;
+}
+
+.sidebar-search.has-query input {
+  padding-right: 38px;
+}
+
+.search-clear {
+  position: absolute;
+  right: 13px;
+  top: 50%;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(30, 41, 59, 0.92);
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
   cursor: pointer;
+}
+
+.search-clear:hover {
+  border-color: #465872;
+  color: var(--text);
+}
+
+.search-clear[hidden] {
+  display: none;
 }
 
 .recent-panel {
@@ -2385,7 +2415,7 @@ li.CodeMirror-hint-active {
     padding: 10px;
   }
   .sidebar {
-    order: 3;
+    order: 2;
     max-height: 340px;
     contain: paint;
   }
@@ -2394,7 +2424,7 @@ li.CodeMirror-hint-active {
   .pane { contain: paint; }
   .sidebar-scroll { max-height: 240px; }
   .editor-pane { order: 1; min-height: 58vh; }
-  .preview-pane { order: 2; min-height: 70vh; }
+  .preview-pane { order: 3; min-height: 70vh; }
   .paper { max-width: 780px; padding: 40px 36px; }
 }
 
@@ -2411,6 +2441,25 @@ li.CodeMirror-hint-active {
 
 @media (max-width: 640px) {
   .topbar { gap: 8px 6px; }
+  .sidebar { max-height: 390px; }
+  .sidebar-search input {
+    height: 44px;
+    padding: 0 12px 0 30px;
+    font-size: 16px;
+  }
+  .sidebar-search.has-query input { padding-right: 44px; }
+  .sidebar-search > svg { top: 23px; left: 22px; }
+  .search-clear {
+    right: 14px;
+    width: 36px;
+    height: 36px;
+    font-size: 21px;
+  }
+  .sym-btn {
+    height: 44px;
+    min-height: 44px;
+    touch-action: manipulation;
+  }
   .topbar-actions .btn span { display: none; }
   .topbar-actions .btn { width: 36px; padding: 0; }
   .project-switcher { flex: 1 1 auto; min-width: 0; }
