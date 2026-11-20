@@ -2,7 +2,7 @@
 
 https://mh-studioz.github.io/scidocs/
 
-v1.0.1
+v1.1.0
 
 [Release notes](CHANGELOG.md)
 
@@ -31,7 +31,7 @@ LaTeX commands only render inside math mode. This is valid LaTeX behavior, not a
 
 If you see a command rendered literally, wrap the **whole expression**, not just the command. For example, change `\sigma * 8` to `$\sigma * 8$`.
 
-The syntax banner also warns when a known math command appears outside math mode and offers **Go to line**. The built-in **Symbol Lab** avoids the problem for new insertions: outside math, it inserts `$\sigma$` and leaves the cursor inside the math so you can continue typing; inside math or an equation environment, it inserts the raw command. Document structures such as sections and tables are never wrapped.
+The syntax banner also warns when a known math command appears outside math mode and offers **Go to line** and a one-click **Fix**. The built-in **Symbol Lab** avoids the problem for new insertions: outside math, it inserts `$\sigma$` and leaves the cursor inside the math so you can continue typing; inside math or an equation environment, it inserts the raw command. Document structures such as sections and tables are never wrapped.
 
 ### Do not nest `$$…$$` inside `equation`
 
@@ -52,7 +52,32 @@ Write the formula directly instead:
 \end{equation}
 ```
 
-The inline and display-math toolbar buttons now check the cursor first. If you are already inside math, they do not add extra `$` delimiters. The syntax banner reports any remaining nested `$$` with a **Go to line** button.
+The inline and display-math toolbar buttons now check the cursor first. If you are already inside math, they do not add extra `$` delimiters. The syntax banner reports any remaining nested `$$` with **Go to line** and **Remove $$** actions.
+
+## Problems, outline and references
+
+The **Problems** button (the list icon in the top bar) opens a single panel with three tabs and a badge showing the current issue count:
+
+- **Problems** lists every syntax and reference issue in source order. **Go to line** moves the editor cursor, and **Fix** applies a safe single-line repair such as wrapping a math command or removing nested `$$`. Fixes can be undone with **Ctrl/Cmd + Z**.
+- **Outline** lists sections, subsections and numbered equations with their line numbers, so you can jump around a long document.
+- **References** lists every `\label`, its kind and assigned number, its use count, and any missing or duplicate labels. The preview resolves `\ref`, `\eqref`, `\autoref` and `\pageref`; a missing label is shown as `??` and is also reported in Problems.
+
+Equation, figure, table and section numbers are assigned in source order by the browser preview. This is a helpful consistency check, not a replacement for a full LaTeX/BibTeX compile.
+
+## Snippets and macros
+
+Open **Snippets** in the top bar to save reusable LaTeX fragments. Give each snippet a name, an autocomplete trigger such as `\quadform`, and its LaTeX body. Saved snippets live in this browser’s `localStorage` and show a rendered math preview.
+
+- Type the trigger in the editor and press **Ctrl/Cmd + Space** to insert the snippet from autocomplete.
+- **Insert** places the snippet at the current cursor; **Use editor selection** fills the body from the selected text.
+- The delete button removes a snippet from this browser. Snippets are not uploaded or included in project backups.
+
+## Copy and export math
+
+Select a formula (or place the cursor on its line) and open **Math** in the top bar. The dialog normalizes common `$…$`, `$$…$$`, `\(…\)` and `\[…\]` delimiters and shows a live KaTeX preview. Toggle **Display style** for a centered equation.
+
+- **Copy LaTeX** copies the normalized formula; **Copy MathML** copies accessible MathML.
+- **SVG** downloads a vector export; **PNG** downloads a 2× raster image on a white background. Both render from the browser’s MathML support; PNG rasterizes that SVG through a canvas.
 
 ## Text → LaTeX
 
@@ -104,7 +129,7 @@ If the model returns invalid KaTeX, SciDocs AI automatically sends one correctio
 - **Import** loads a `.tex` file into the editor; **.tex** downloads the current source.
 - **Share** copies a link containing the document; opening it imports a local `(shared)` project.
 - **Templates** starts a lab report, homework set or paper.
-- The syntax banner shows the first structural problem with a **Go to line** button, plus a count of further issues. It also warns about math commands used outside math mode.
+- The syntax banner shows the first structural problem with **Go to line** and, when available, a one-click **Fix**; it also reports a count of further issues and warns about math commands used outside math mode.
 - **History** keeps automatic snapshots, restores previous versions, and exports/imports a JSON workspace backup.
 - **Info** explains what the browser preview supports and where a full TeX compile is needed.
 - **Guide** explains the workflow in the app; this README is the longer reference.

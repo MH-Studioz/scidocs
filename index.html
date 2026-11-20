@@ -21,7 +21,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/show-hint.min.css" />
-  <link rel="stylesheet" href="styles.css?v=1.0.1" />
+  <link rel="stylesheet" href="styles.css?v=1.1.0" />
 
   <script defer src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
@@ -33,7 +33,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/selection/active-line.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/show-hint.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
-  <script defer src="app.js?v=1.0.1"></script>
+  <script defer src="app.js?v=1.1.0"></script>
 </head>
 
 <body class="app">
@@ -89,6 +89,12 @@
       </button>
       <button class="btn btn-ghost btn-icon-only" type="button" id="templatesBtn" title="Start from a template" aria-label="Start from a template">
         <i data-lucide="file-plus-2"></i>
+      </button>
+      <button class="btn btn-ghost btn-icon-only" type="button" id="problemsBtn" title="Problems, outline and references" aria-label="Problems, outline and references">
+        <i data-lucide="list-checks"></i><span class="tool-badge" id="problemsCount" hidden>0</span>
+      </button>
+      <button class="btn btn-ghost btn-icon-only" type="button" id="snippetsBtn" title="Snippet and macro library" aria-label="Snippet and macro library">
+        <i data-lucide="library"></i>
       </button>
       <button class="btn btn-ghost btn-icon-only" type="button" id="guideBtn" title="SciDocs user guide" aria-label="SciDocs user guide">
         <i data-lucide="book-open"></i>
@@ -152,6 +158,9 @@
           </button>
           <button class="chip-btn math-wrap-btn" type="button" id="wrapDisplayBtn" title="Wrap selection in display math ($$…$$)">
             <span class="mono">$$x$$</span>
+          </button>
+          <button class="chip-btn" type="button" id="mathExportBtn" title="Copy or export selected math">
+            <i data-lucide="sigma"></i><span>Math</span>
           </button>
           <button class="chip-btn" type="button" id="importTexBtn" title="Import a .tex file">
             <i data-lucide="upload"></i><span>Import</span>
@@ -334,6 +343,109 @@ $$\sigma * 8$$     → display math</pre>
         <div class="modal-actions">
           <button class="btn btn-ghost" type="button" id="guideScope">Preview scope</button>
           <button class="btn btn-primary" type="button" data-close-modal>Got it</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== PROBLEMS MODAL ============================== -->
+  <div class="modal-backdrop" id="problemsModal" hidden>
+    <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="problemsTitle">
+      <div class="modal-head">
+        <span class="modal-icon"><i data-lucide="list-checks"></i></span>
+        <div class="modal-title">
+          <h2 id="problemsTitle">Problems &amp; outline</h2>
+          <p>Every detected issue, document heading and label in one place.</p>
+        </div>
+        <button class="icon-btn" type="button" data-close-modal aria-label="Close"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body problems-body">
+        <div class="panel-tabs" id="problemsTabs" role="tablist" aria-label="Problems, outline or references">
+          <button class="panel-tab is-active" type="button" data-problems-tab="problems">Problems <span class="panel-count" id="problemsTabCount">0</span></button>
+          <button class="panel-tab" type="button" data-problems-tab="outline">Outline</button>
+          <button class="panel-tab" type="button" data-problems-tab="references">References</button>
+        </div>
+        <div class="panel-view" id="problemsView"></div>
+      </div>
+      <div class="modal-foot">
+        <p class="hint">Fixes edit the current document and can be undone with Ctrl/Cmd + Z.</p>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" id="problemsRecompile">Recheck</button>
+          <button class="btn btn-ghost" type="button" data-close-modal>Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== SNIPPET MODAL ============================== -->
+  <div class="modal-backdrop" id="snippetModal" hidden>
+    <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="snippetTitle">
+      <div class="modal-head">
+        <span class="modal-icon"><i data-lucide="library"></i></span>
+        <div class="modal-title">
+          <h2 id="snippetTitle">Snippet &amp; macro library</h2>
+          <p>Reusable LaTeX, stored only in this browser.</p>
+        </div>
+        <button class="icon-btn" type="button" data-close-modal aria-label="Close"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="snippet-form">
+          <div class="snippet-form-grid">
+            <div>
+              <label class="field-label" for="snippetName">Name</label>
+              <input class="field" id="snippetName" type="text" maxlength="60" placeholder="Quadratic formula" />
+            </div>
+            <div>
+              <label class="field-label" for="snippetTrigger">Autocomplete trigger</label>
+              <input class="field mono" id="snippetTrigger" type="text" maxlength="40" placeholder="\\quadform" />
+            </div>
+          </div>
+          <label class="field-label" for="snippetBody">LaTeX</label>
+          <textarea class="field field-area mono" id="snippetBody" rows="4" spellcheck="false" placeholder="x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}"></textarea>
+          <div class="snippet-form-actions">
+            <button class="btn btn-ghost btn-xs" type="button" id="snippetSelection">Use editor selection</button>
+            <select class="field field-sm" id="snippetKind" aria-label="Snippet kind">
+              <option value="snippet">Snippet</option>
+              <option value="macro">Macro</option>
+            </select>
+            <button class="btn btn-primary btn-xs" type="button" id="snippetSave">Save snippet</button>
+          </div>
+        </div>
+        <div class="snippet-list" id="snippetList"></div>
+      </div>
+      <div class="modal-foot">
+        <p class="hint">Type the trigger in the editor, then press Ctrl/Cmd + Space to autocomplete.</p>
+        <div class="modal-actions"><button class="btn btn-ghost" type="button" data-close-modal>Close</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== MATH EXPORT MODAL ============================== -->
+  <div class="modal-backdrop" id="mathExportModal" hidden>
+    <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="mathExportTitle">
+      <div class="modal-head">
+        <span class="modal-icon"><i data-lucide="sigma"></i></span>
+        <div class="modal-title">
+          <h2 id="mathExportTitle">Copy &amp; export math</h2>
+          <p>Copy LaTeX or MathML, or download the selected formula.</p>
+        </div>
+        <button class="icon-btn" type="button" data-close-modal aria-label="Close"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <label class="field-label" for="mathExportSource">LaTeX formula</label>
+        <textarea class="field field-area mono" id="mathExportSource" rows="4" spellcheck="false"></textarea>
+        <label class="inline-check"><input type="checkbox" id="mathExportDisplay" /> Display style</label>
+        <div class="math-export-preview" id="mathExportPreview" aria-live="polite"></div>
+        <p class="hint" id="mathExportNote">Select a formula in the editor, or edit it here.</p>
+      </div>
+      <div class="modal-foot">
+        <p class="hint">SVG and PNG use the browser's MathML renderer.</p>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" id="mathCopyLatex">Copy LaTeX</button>
+          <button class="btn btn-ghost" type="button" id="mathCopyMathml">Copy MathML</button>
+          <button class="btn btn-ghost" type="button" id="mathDownloadSvg">SVG</button>
+          <button class="btn btn-ghost" type="button" id="mathDownloadPng">PNG</button>
+          <button class="btn btn-primary" type="button" data-close-modal>Close</button>
         </div>
       </div>
     </div>

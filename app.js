@@ -12,6 +12,8 @@
   const DB_NAME = 'scidocs.db';
   const DB_VERSION = 1;
   const SNAPSHOT_LIMIT = 20;
+  const SNIPPETS_KEY = 'scidocs.snippets.v1';
+  const SNIPPET_LIMIT = 50;
 
   /* ------------------------------------------------------------------ *
    *  DOM helpers
@@ -1405,6 +1407,7 @@ Close with the main takeaway.
       errors: [],
       warnings: [],
       headings: [],
+      references: null,
       counters: {
         chapter: 0,
         section: 0,
@@ -2054,8 +2057,30 @@ Close with the main takeaway.
       rna: (a) => hold(sequenceHtml(a, false, true)),
       dnac: (a) => hold(sequenceHtml(a, true, false)),
       rnac: (a) => hold(sequenceHtml(a, true, true)),
-      ref: (a) => hold('<span class="doc-ref">' + escapeHtml(a) + '</span>'),
-      eqref: (a) => hold('<span class="doc-ref">(' + escapeHtml(a) + ')</span>'),
+      ref: (a) => {
+        const entry = ctx && ctx.references && ctx.references.labelMap.get(a);
+        const text = entry && entry.number ? entry.number : '??';
+        return hold('<span class="doc-ref' + (entry ? '' : ' is-missing') + '" title="' +
+          escapeHtml(entry ? entry.name : 'Missing label: ' + a) + '">' + escapeHtml(text) + '</span>');
+      },
+      eqref: (a) => {
+        const entry = ctx && ctx.references && ctx.references.labelMap.get(a);
+        const text = entry && entry.number ? entry.number : '??';
+        return hold('<span class="doc-ref' + (entry ? '' : ' is-missing') + '">(' + escapeHtml(text) + ')</span>');
+      },
+      autoref: (a) => {
+        const entry = ctx && ctx.references && ctx.references.labelMap.get(a);
+        const kind = entry && entry.kind === 'figure' ? 'Figure ' :
+          entry && entry.kind === 'table' ? 'Table ' :
+          entry && entry.kind === 'section' ? 'Section ' : 'Equation ';
+        return hold('<span class="doc-ref' + (entry ? '' : ' is-missing') + '">' +
+          escapeHtml(entry ? kind + entry.number : '??') + '</span>');
+      },
+      pageref: (a) => {
+        const entry = ctx && ctx.references && ctx.references.labelMap.get(a);
+        return hold('<span class="doc-ref' + (entry ? '' : ' is-missing') + '">p. ' +
+          escapeHtml(entry && entry.number ? entry.number : '??') + '</span>');
+      },
       label: () => hold(''),
       index: () => hold('')
     };
@@ -2533,10 +2558,154 @@ Close with the main takeaway.
     return macros;
   }
 
+  function sourceLineWithoutComment(line) {
+    return String(line || '').replace(/(^|[^\\])%.*$/, '$1');
+  }
+
+  function parseReferenceIndex(source) {
+    const lines = String(source || '').split('\n');
+    const labels = [];
+    const refs = [];
+    const labelMap = new Map();
+    const section = { chapter: 0, section: 0, subsection: 0, subsubsection: 0 };
+    let equation = 0;
+    let figure = 0;
+    let table = 0;
+    let lastHeading = null;
+    const envStack = [];
+    const numbered = new Set(['equation', 'align', 'alignat', 'flalign', 'eqnarray', 'gather', 'multline']);
+
+    const sectionDisplay = () => [section.chapter, section.section, section.subsection, section.subsubsection]
+      .filter((value) => value > 0).join('.');
+
+    lines.forEach((rawLine, lineIndex) => {
+      const line = sourceLineWithoutComment(rawLine);
+      const heading = /^\s*\\(chapter|section|subsection|subsubsection|paragraph)\*?\s*(?:\[[^\]]*\]\s*)?\{([^}]*)\}/.exec(line);
+      if (heading) {
+        const kind = heading[1];
+        if (kind === 'chapter') {
+          section.chapter += 1;
+          section.section = section.subsection = section.subsubsection = 0;
+        } else if (kind === 'section') {
+          section.section += 1;
+          section.subsection = section.subsubsection = 0;
+        } else if (kind === 'subsection') {
+          section.subsection += 1;
+          section.subsubsection = 0;
+        } else if (kind === 'subsubsection') {
+          section.subsubsection += 1;
+        }
+        lastHeading = { title: heading[2].replace(/\\[A-Za-z]+\*?/g, '').trim(), number: sectionDisplay(), line: lineIndex + 1 };
+      }
+
+      const events = [];
+      const tokenRe = /\\(begin|end)\s*\{([A-Za-z*]+)\}|\\label\s*\{([^}]*)\}|\\(ref|eqref|autoref|pageref)\s*\{([^}]*)\}/g;
+      let token;
+      while ((token = tokenRe.exec(line)) !== null) {
+        if (token[1]) events.push({ index: token.index, type: token[1], env: token[2] });
+        else if (token[3] !== undefined) events.push({ index: token.index, type: 'label', name: token[3].trim() });
+        else if (token[4]) events.push({ index: token.index, type: 'ref', command: token[4], name: token[5].trim() });
+      }
+      events.sort((a, b) => a.index - b.index);
+
+      events.forEach((event) => {
+        if (event.type === 'begin') {
+          /* Only math and float environments affect label numbering. Ignore
+             the outer document, lists and theorem wrappers here. */
+          if (!(MATH_ENVS.has(event.env) || event.env.indexOf('figure') === 0 || event.env.indexOf('table') === 0)) {
+            return;
+          }
+          let number = '';
+          let kind = event.env;
+          if (numbered.has(event.env)) {
+            equation += 1;
+            number = String(equation);
+          } else if (event.env === 'figure' || event.env === 'figure*') {
+            figure += 1;
+            number = String(figure);
+            kind = 'figure';
+          } else if (event.env === 'table' || event.env === 'table*') {
+            table += 1;
+            number = String(table);
+            kind = 'table';
+          }
+          envStack.push({ env: event.env, number, kind });
+          return;
+        }
+        if (event.type === 'end') {
+          for (let i = envStack.length - 1; i >= 0; i -= 1) {
+            if (envStack[i].env === event.env) { envStack.splice(i, 1); break; }
+          }
+          return;
+        }
+        if (event.type === 'label') {
+          if (!event.name) return;
+          const current = envStack.length ? envStack[envStack.length - 1] : null;
+          let kind = 'section';
+          let number = '';
+          let context = lastHeading ? lastHeading.title : 'Document';
+          if (current) {
+            context = current.env;
+            if (current.number) {
+              kind = current.kind === 'figure' || current.kind === 'table' ? current.kind : 'equation';
+              number = current.number;
+            } else if (MATH_ENVS.has(current.env)) {
+              kind = 'equation';
+            }
+          } else if (lastHeading) {
+            number = lastHeading.number;
+          }
+          const entry = { name: event.name, line: lineIndex + 1, kind, number, context };
+          labels.push(entry);
+          if (!labelMap.has(event.name)) labelMap.set(event.name, entry);
+          return;
+        }
+        if (event.type === 'ref' && event.name) {
+          refs.push({ name: event.name, line: lineIndex + 1, command: event.command });
+        }
+      });
+    });
+
+    const counts = {};
+    labels.forEach((label) => { counts[label.name] = (counts[label.name] || 0) + 1; });
+    const duplicates = labels.filter((label) => counts[label.name] > 1);
+    const used = new Set(refs.map((ref) => ref.name));
+    const missing = refs.filter((ref) => !labelMap.has(ref.name));
+    const unused = labels.filter((label) => !used.has(label.name));
+
+    return { labels, refs, labelMap, duplicates, missing, unused, equation, figure, table };
+  }
+
+  function parseOutline(source) {
+    const lines = String(source || '').split('\n');
+    const items = [];
+    const headingRe = /^\s*\\(chapter|section|subsection|subsubsection|paragraph)\*?\s*(?:\[[^\]]*\]\s*)?\{([^}]*)\}/;
+    const envRe = /\\begin\s*\{(equation|align|gather|multline|figure|table)\*?\}/g;
+    lines.forEach((rawLine, index) => {
+      const line = sourceLineWithoutComment(rawLine);
+      const heading = headingRe.exec(line);
+      if (heading) {
+        items.push({
+          type: 'heading',
+          level: { chapter: 0, section: 1, subsection: 2, subsubsection: 3, paragraph: 4 }[heading[1]],
+          title: heading[2].replace(/\\[A-Za-z]+\*?/g, '').trim() || heading[1],
+          line: index + 1
+        });
+        return;
+      }
+      let env;
+      while ((env = envRe.exec(line)) !== null) {
+        items.push({ type: env[1].replace('*', ''), title: env[1], line: index + 1 });
+      }
+    });
+    return items;
+  }
+
   function compileDocument(source) {
     const src = stripComments(source);
     const ctx = makeCtx({});
     ctx.macros = collectUserMacros(src);
+    ctx.references = parseReferenceIndex(src);
 
     const beginMatch = /\\begin\s*\{document\}/.exec(src);
     let preamble = '';
@@ -2700,9 +2869,14 @@ Close with the main takeaway.
     const lefts = (text.match(/\\left(?![A-Za-z])/g) || []).length;
     const rights = (text.match(/\\right(?![A-Za-z])/g) || []).length;
     if (lefts !== rights) {
+      const leftIndex = text.search(/\\left(?![A-Za-z])/);
+      const rightIndex = text.search(/\\right(?![A-Za-z])/);
+      const pairIndex = Math.min(...[leftIndex, rightIndex].filter((index) => index >= 0));
       warnings.push({
         msg: '\\left and \\right are unbalanced (' + lefts + ' vs ' + rights + '). LaTeX may reject the expression.',
-        hint: 'Pair every \\left with a matching \\right.'
+        hint: 'Pair every \\left with a matching \\right.',
+        line: pairIndex >= 0 ? lineOf(text, pairIndex) : 0,
+        fix: { kind: 'balance-left-right', line: pairIndex >= 0 ? lineOf(text, pairIndex) : 0 }
       });
     }
 
@@ -2710,7 +2884,8 @@ Close with the main takeaway.
       warnings.push({
         msg: item.name + ' is a math command but appears outside math mode.',
         hint: 'Wrap it as $' + item.name + '$ or put it inside an equation environment.',
-        line: item.line
+        line: item.line,
+        fix: { kind: 'wrap-command', command: item.name, line: item.line }
       });
     });
 
@@ -2718,7 +2893,8 @@ Close with the main takeaway.
       errors.push({
         msg: 'A $$ display delimiter appears inside ' + item.where + '.',
         hint: 'Remove the extra $$; the equation environment already provides math mode.',
-        line: item.line
+        line: item.line,
+        fix: { kind: 'strip-dollars', line: item.line }
       });
     });
 
@@ -2775,6 +2951,7 @@ Close with the main takeaway.
     let detail = 'Braces, math delimiters and environments are balanced.';
     let hint = '';
     let jumpLine = 0;
+    let fix = null;
 
     if (errors.length) {
       level = 'is-error';
@@ -2783,6 +2960,7 @@ Close with the main takeaway.
       detail = errors[0].msg;
       hint = errors[0].hint || '';
       jumpLine = errors[0].line || 0;
+      fix = errors[0].fix || null;
       if (errors.length > 1) detail += ' (+' + (errors.length - 1) + ' more)';
     } else if (warnings.length) {
       level = 'is-warn';
@@ -2792,8 +2970,15 @@ Close with the main takeaway.
       detail = typeof firstWarning === 'string' ? firstWarning : firstWarning.msg;
       hint = typeof firstWarning === 'string' ? '' : firstWarning.hint || '';
       jumpLine = typeof firstWarning === 'string' ? 0 : firstWarning.line || 0;
+      fix = typeof firstWarning === 'string' ? null : firstWarning.fix || null;
       if (warnings.length > 1) detail += ' (+' + (warnings.length - 1) + ' more)';
     }
+
+    const fixButton = fix ? '<button class="banner-fix" type="button" data-fix-kind="' +
+      escapeHtml(fix.kind) + '" data-fix-line="' + (fix.line || jumpLine || 1) +
+      '" data-fix-command="' + escapeHtml(fix.command || '') + '">' +
+      (fix.kind === 'strip-dollars' ? 'Remove $$' : fix.kind === 'balance-left-right' ? 'Balance' : 'Fix') +
+      '</button>' : '';
 
     banner.className = 'syntax-banner ' + level;
     banner.innerHTML =
@@ -2802,6 +2987,7 @@ Close with the main takeaway.
       '<span>' + escapeHtml(detail) +
       (hint ? ' <span class="banner-hint">' + escapeHtml(hint) + '</span>' : '') +
       (jumpLine ? ' <button class="banner-jump" type="button" data-jump-line="' + jumpLine + '">Go to line ' + jumpLine + '</button>' : '') +
+      fixButton +
       '</span></div>';
     banner.title = errors.concat(warnings.map((w) => ({ msg: typeof w === 'string' ? w : w.msg }))).map((e) => e.msg).join('\n');
     refreshIcons();
@@ -2810,6 +2996,215 @@ Close with the main takeaway.
     if (badge) badge.classList.toggle('is-warn', errors.length > 0 || warnings.length > 0);
     const status = $('#renderStatus');
     if (status) status.textContent = errors.length ? 'Needs attention' : 'Live';
+  }
+
+  function jumpToLine(line) {
+    if (!cm || !line) return;
+    const row = Math.max(0, Math.min(Number(line) - 1, cm.lineCount() - 1));
+    cm.setCursor({ line: row, ch: 0 });
+    cm.focus();
+    cm.scrollIntoView({ line: row, ch: 0 }, 80);
+  }
+
+  function replaceEditorLine(line, nextLine) {
+    if (!cm) return;
+    const row = Math.max(0, Math.min(Number(line) - 1, cm.lineCount() - 1));
+    const oldLine = cm.getLine(row) || '';
+    cm.replaceRange(nextLine, { line: row, ch: 0 }, { line: row, ch: oldLine.length });
+    markDirty();
+    cm.setCursor({ line: row, ch: Math.min(nextLine.length, nextLine.indexOf('$') >= 0 ? nextLine.indexOf('$') + 1 : nextLine.length) });
+    renderNow({ manual: true });
+  }
+
+  function applyDiagnosticFix(kind, line, command) {
+    if (!cm || !kind) return;
+    const row = Math.max(0, Math.min(Number(line) - 1, cm.lineCount() - 1));
+    const current = cm.getLine(row) || '';
+    let next = current;
+    let message = 'Issue fixed';
+
+    if (kind === 'strip-dollars') {
+      next = current.replace(/\$\$/g, '');
+      message = 'Removed nested $$';
+    } else if (kind === 'balance-left-right') {
+      const lefts = (current.match(/\\left(?![A-Za-z])/g) || []).length;
+      const rights = (current.match(/\\right(?![A-Za-z])/g) || []).length;
+      if (lefts > rights) {
+        next = current.replace(/\s*$/, '') + ' \\right.';
+        message = 'Added the missing \\right';
+      } else if (rights > lefts) {
+        const indent = (current.match(/^\s*/) || [''])[0];
+        next = indent + '\\left. ' + current.slice(indent.length);
+        message = 'Added the missing \\left';
+      }
+    } else if (kind === 'wrap-command') {
+      const cmd = String(command || '').trim();
+      if (!cmd) return;
+      const content = current.trim();
+      const probe = content.replace(/\\[A-Za-z]+/g, ' ')
+        .replace(/[0-9\s{}[\]().,;:^_+\-*\/=<>|&!]/g, '');
+      if (!/[A-Za-z]/.test(probe) && content.indexOf('$') < 0) {
+        const indent = (current.match(/^\s*/) || [''])[0];
+        next = indent + '$' + content + '$';
+      } else {
+        const at = current.indexOf(cmd);
+        if (at < 0) return;
+        next = current.slice(0, at) + '$' + cmd + '$' + current.slice(at + cmd.length);
+      }
+      message = 'Wrapped the math command';
+    }
+
+    if (next === current) {
+      toast('Nothing to fix on this line', 'info');
+      return;
+    }
+    replaceEditorLine(row + 1, next);
+    toast(message, 'success');
+  }
+
+  function diagnosticItems(analysis, ctx, refs) {
+    const items = [];
+    const seen = new Set();
+    const add = (item) => {
+      const key = item.severity + '|' + item.msg + '|' + (item.line || 0);
+      if (seen.has(key)) return;
+      seen.add(key);
+      items.push(item);
+    };
+    (analysis.errors || []).forEach((error) => add(Object.assign({ severity: 'error' }, error)));
+    (analysis.warnings || []).forEach((warning) => {
+      add(Object.assign({ severity: 'warning' }, typeof warning === 'string' ? { msg: warning } : warning));
+    });
+    (ctx && ctx.errors ? ctx.errors : []).forEach((msg) => add({ severity: 'error', msg: String(msg) }));
+    (ctx && ctx.warnings ? ctx.warnings : []).forEach((msg) => {
+      add({ severity: 'warning', msg: typeof msg === 'string' ? msg : msg.msg });
+    });
+    const index = refs || (ctx && ctx.references) || { missing: [], duplicates: [], unused: [] };
+    (index.missing || []).forEach((ref) => add({
+      severity: 'error',
+      msg: 'Missing label “' + ref.name + '”.',
+      hint: 'Define it with \\label{' + ref.name + '} or fix the reference.',
+      line: ref.line,
+      refName: ref.name
+    }));
+    const duplicateNames = new Set();
+    (index.duplicates || []).forEach((label) => {
+      if (duplicateNames.has(label.name)) return;
+      duplicateNames.add(label.name);
+      add({
+        severity: 'error',
+        msg: 'Duplicate label “' + label.name + '”.',
+        hint: 'Each label must be unique; rename one definition.',
+        line: label.line
+      });
+    });
+    (index.unused || []).forEach((label) => add({
+      severity: 'info',
+      msg: 'Unused label “' + label.name + '”.',
+      hint: 'Add a reference or remove the label.',
+      line: label.line
+    }));
+    return items.sort((a, b) => (a.severity === 'error' ? -1 : b.severity === 'error' ? 1 : 0) ||
+      ((a.line || 0) - (b.line || 0)));
+  }
+
+  function updateProblemsBadge(items) {
+    const count = $('#problemsCount');
+    if (!count) return;
+    const total = (items || []).length;
+    count.textContent = total > 99 ? '99+' : String(total);
+    count.hidden = total === 0;
+  }
+
+  let problemsTab = 'problems';
+
+  function problemDiagnostics() {
+    const source = cm ? cm.getValue() : '';
+    const analysis = analyzeSource(source);
+    const result = compileDocument(source);
+    const refs = result.ctx.references || parseReferenceIndex(source);
+    return {
+      source,
+      analysis,
+      result,
+      refs,
+      items: diagnosticItems(analysis, result.ctx, refs)
+    };
+  }
+
+  function issueRows(items) {
+    if (!items.length) {
+      return '<div class="panel-empty"><i data-lucide="check-circle-2"></i><strong>No problems found</strong><span>Braces, math delimiters, environments and references look good.</span></div>';
+    }
+    return items.map((item) => {
+      const fix = item.fix;
+      const line = item.line || 0;
+      return '<div class="issue-row is-' + escapeHtml(item.severity) + '">' +
+        '<button class="issue-main" type="button"' + (line ? ' data-jump-line="' + line + '"' : '') + '>' +
+        '<i data-lucide="' + (item.severity === 'error' ? 'alert-triangle' : item.severity === 'warning' ? 'alert-circle' : 'info') + '"></i>' +
+        '<span class="issue-copy"><strong>' + escapeHtml(item.msg) + '</strong>' +
+        (item.hint ? '<span>' + escapeHtml(item.hint) + '</span>' : '') + '</span>' +
+        (line ? '<span class="issue-line">Ln ' + line + '</span>' : '') + '</button>' +
+        (fix ? '<button class="issue-fix" type="button" data-fix-kind="' + escapeHtml(fix.kind) +
+          '" data-fix-line="' + (fix.line || line || 1) + '" data-fix-command="' + escapeHtml(fix.command || '') +
+          '">' + (fix.kind === 'strip-dollars' ? 'Remove $$' : fix.kind === 'balance-left-right' ? 'Balance' : 'Fix') + '</button>' : '') +
+        '</div>';
+    }).join('');
+  }
+
+  function outlineRows(items) {
+    if (!items.length) return '<div class="panel-empty"><i data-lucide="list"></i><strong>No outline yet</strong><span>Add a \\section or an equation to see it here.</span></div>';
+    const icons = { heading: 'hash', equation: 'sigma', figure: 'image', table: 'table' };
+    return items.map((item) => '<button class="outline-row level-' + (item.level || 0) + '" type="button" data-jump-line="' + item.line + '">' +
+      '<i data-lucide="' + (icons[item.type] || 'dot') + '"></i><span>' + escapeHtml(item.title) + '</span><span class="issue-line">Ln ' + item.line + '</span></button>').join('');
+  }
+
+  function referenceRows(refs) {
+    const used = {};
+    (refs.refs || []).forEach((ref) => { used[ref.name] = (used[ref.name] || 0) + 1; });
+    const labelRows = (refs.labels || []).length
+      ? refs.labels.map((label) => '<button class="ref-row" type="button" data-jump-line="' + label.line + '">' +
+        '<span class="ref-name">' + escapeHtml(label.name) + '</span>' +
+        '<span class="ref-kind">' + escapeHtml(label.kind) + (label.number ? ' ' + escapeHtml(label.number) : '') + '</span>' +
+        '<span class="ref-uses">' + (used[label.name] || 0) + ' use' + ((used[label.name] || 0) === 1 ? '' : 's') + '</span></button>').join('')
+      : '<p class="panel-empty-inline">No labels yet. Add \\label{name} inside an equation or section.</p>';
+    const missingRows = (refs.missing || []).length
+      ? refs.missing.map((ref) => '<button class="ref-row is-missing" type="button" data-jump-line="' + ref.line + '">' +
+        '<span class="ref-name">' + escapeHtml(ref.name) + '</span><span class="ref-kind">missing · Ln ' + ref.line + '</span></button>').join('')
+      : '<p class="panel-empty-inline">No missing references.</p>';
+    return '<div class="ref-summary">' +
+      '<span><strong>' + (refs.labels || []).length + '</strong> labels</span>' +
+      '<span><strong>' + (refs.refs || []).length + '</strong> references</span>' +
+      '<span><strong>' + (refs.missing || []).length + '</strong> missing</span></div>' +
+      '<section class="ref-section"><h4>Defined labels</h4>' + labelRows + '</section>' +
+      '<section class="ref-section"><h4>Missing references</h4>' + missingRows + '</section>';
+  }
+
+  function renderProblemsView(state) {
+    const view = $('#problemsView');
+    if (!view) return;
+    const items = state ? state.items : problemDiagnostics().items;
+    const refs = state ? state.refs : null;
+    const count = $('#problemsTabCount');
+    if (count) count.textContent = String(items.length);
+    if (problemsTab === 'outline') {
+      view.innerHTML = outlineRows(parseOutline(cm ? cm.getValue() : ''));
+    } else if (problemsTab === 'references') {
+      view.innerHTML = referenceRows(refs || parseReferenceIndex(cm ? cm.getValue() : ''));
+    } else {
+      view.innerHTML = issueRows(items);
+    }
+    refreshIcons();
+  }
+
+  function openProblems(tab) {
+    problemsTab = tab || 'problems';
+    const state = problemDiagnostics();
+    $$('#problemsTabs [data-problems-tab]').forEach((button) => {
+      button.classList.toggle('is-active', button.dataset.problemsTab === problemsTab);
+    });
+    renderProblemsView(state);
+    openModal('#problemsModal');
   }
 
   function renderNow(options) {
@@ -2854,6 +3249,7 @@ Close with the main takeaway.
 
     const analysis = analyzeSource(cm.getValue());
     updateBanner(analysis, result.ctx);
+    updateProblemsBadge(diagnosticItems(analysis, result.ctx, result.ctx.references));
 
     const eqTag = $('#equationTag');
     if (eqTag) {
@@ -3187,12 +3583,38 @@ Close with the main takeaway.
 
   function latexHint(instance) {
     const cur = instance.getCursor();
+    const lineBefore = instance.getLine(cur.line).slice(0, cur.ch);
+    const refMatch = /\\(ref|eqref|autoref|pageref)\s*\{([^}]*)$/.exec(lineBefore);
+    if (refMatch) {
+      const term = refMatch[2].toLowerCase();
+      const refIndex = parseReferenceIndex(instance.getValue());
+      const labels = Array.from(new Set(refIndex.labels.map((label) => label.name)))
+        .filter((name) => name.toLowerCase().startsWith(term));
+      if (labels.length) {
+        return {
+          list: labels.slice(0, 40),
+          from: window.CodeMirror.Pos(cur.line, cur.ch - refMatch[2].length),
+          to: cur
+        };
+      }
+    }
+
     const token = instance.getTokenAt(cur);
     const match = /\\[A-Za-z]*$/.exec(token.string);
     if (!match) return null;
     const term = match[0].slice(1).toLowerCase();
     if (!term) return null;
-    const list = latexHintCommands().filter((cmd) => cmd.slice(1).toLowerCase().startsWith(term));
+    const snippets = readSnippets()
+      .filter((item) => item.trigger && item.trigger.slice(1).toLowerCase().startsWith(term))
+      .map((item) => ({
+        text: item.body,
+        displayText: item.trigger + ' · ' + item.name,
+        className: 'snippet-hint'
+      }));
+    const commands = latexHintCommands()
+      .filter((cmd) => cmd.slice(1).toLowerCase().startsWith(term))
+      .map((cmd) => ({ text: cmd, displayText: cmd }));
+    const list = snippets.concat(commands);
     if (!list.length) return null;
     return {
       list: list.slice(0, 40),
@@ -3432,6 +3854,136 @@ Close with the main takeaway.
     });
     const recent = $('#recentPanel');
     if (recent) recent.hidden = !!q || readRecent().length === 0;
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  Snippet and macro library
+   * ------------------------------------------------------------------ */
+  function readSnippets() {
+    try {
+      const list = JSON.parse(localStorage.getItem(SNIPPETS_KEY) || '[]');
+      return Array.isArray(list)
+        ? list.filter((item) => item && item.name && item.body).slice(0, SNIPPET_LIMIT)
+        : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function writeSnippets(list) {
+    try {
+      localStorage.setItem(SNIPPETS_KEY, JSON.stringify(list.slice(0, SNIPPET_LIMIT)));
+    } catch (_) { /* storage may be unavailable */ }
+  }
+
+  function normalizeSnippetTrigger(value, name) {
+    let trigger = String(value || '').trim();
+    if (!trigger) trigger = String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+    trigger = trigger.replace(/^\\+/, '');
+    return trigger ? '\\' + trigger : '';
+  }
+
+  function mathPreviewHtml(value, display) {
+    const body = String(value || '').trim();
+    if (!body || !window.katex) return '<pre class="snippet-code">' + escapeHtml(body) + '</pre>';
+    let clean = body
+      .replace(/^\$\$([\s\S]*)\$\$$/, '$1')
+      .replace(/^\$([\s\S]*)\$$/, '$1')
+      .replace(/^\\\[([\s\S]*)\\\]$/, '$1')
+      .replace(/^\\\(([\s\S]*)\\\)$/, '$1')
+      .trim();
+    if (/\\newcommand|\\renewcommand|\\def\b/.test(clean)) {
+      return '<pre class="snippet-code">' + escapeHtml(clean) + '</pre>';
+    }
+    try {
+      return window.katex.renderToString(clean, {
+        displayMode: Boolean(display),
+        throwOnError: false,
+        strict: false,
+        macros: Object.assign({}, MACROS)
+      });
+    } catch (_) {
+      return '<pre class="snippet-code">' + escapeHtml(clean) + '</pre>';
+    }
+  }
+
+  function renderSnippetList() {
+    const host = $('#snippetList');
+    if (!host) return;
+    const items = readSnippets();
+    if (!items.length) {
+      host.innerHTML = '<div class="panel-empty"><i data-lucide="library"></i><strong>No saved snippets</strong><span>Save an equation or macro above, then insert it from here.</span></div>';
+      refreshIcons();
+      return;
+    }
+    host.innerHTML = items.map((item) => {
+      const kind = item.kind === 'macro' ? 'Macro' : 'Snippet';
+      const display = /\$\$|\\begin\{(equation|align|gather|multline|pmatrix|bmatrix|vmatrix)/.test(item.body);
+      return '<article class="snippet-card" data-snippet-card="' + escapeHtml(item.id) + '">' +
+        '<div class="snippet-card-head"><strong>' + escapeHtml(item.name) + '</strong>' +
+        '<span class="badge-soft">' + kind + '</span></div>' +
+        '<div class="snippet-preview">' + mathPreviewHtml(item.body, display) + '</div>' +
+        '<div class="snippet-card-foot"><code class="snippet-trigger">' + escapeHtml(item.trigger || '') + '</code>' +
+        '<span class="snippet-actions"><button class="btn btn-ghost btn-xs" type="button" data-snippet-insert="' + escapeHtml(item.id) + '">Insert</button>' +
+        '<button class="icon-btn icon-btn-danger" type="button" data-snippet-delete="' + escapeHtml(item.id) + '" aria-label="Delete ' + escapeHtml(item.name) + '"><i data-lucide="trash-2"></i></button></span></div>' +
+        '</article>';
+    }).join('');
+    refreshIcons();
+  }
+
+  function openSnippets() {
+    const name = $('#snippetName');
+    const trigger = $('#snippetTrigger');
+    const body = $('#snippetBody');
+    if (name) name.value = '';
+    if (trigger) trigger.value = '';
+    if (body) body.value = cm ? cm.getSelection() : '';
+    renderSnippetList();
+    openModal('#snippetModal');
+    setTimeout(() => { if (name) name.focus(); }, 40);
+  }
+
+  function saveSnippet() {
+    const name = ($('#snippetName') && $('#snippetName').value.trim()) || '';
+    const body = ($('#snippetBody') && $('#snippetBody').value.trim()) || '';
+    if (!name || !body) {
+      toast('Add a name and LaTeX body first', 'warn');
+      return;
+    }
+    const trigger = normalizeSnippetTrigger($('#snippetTrigger') && $('#snippetTrigger').value, name);
+    const kind = ($('#snippetKind') && $('#snippetKind').value) || 'snippet';
+    const items = readSnippets();
+    items.unshift({
+      id: 's_' + Math.random().toString(36).slice(2, 9),
+      name,
+      trigger,
+      body,
+      kind,
+      updatedAt: Date.now()
+    });
+    writeSnippets(items);
+    $('#snippetName').value = '';
+    $('#snippetTrigger').value = '';
+    $('#snippetBody').value = '';
+    renderSnippetList();
+    toast('Snippet saved', 'success');
+  }
+
+  function insertSavedSnippet(id) {
+    const item = readSnippets().find((entry) => entry.id === id);
+    if (!item) return;
+    closeModal('#snippetModal');
+    insertSnippet(item.body);
+    toast('Inserted ' + item.name, 'success');
+  }
+
+  function deleteSavedSnippet(id) {
+    const items = readSnippets();
+    const item = items.find((entry) => entry.id === id);
+    if (!item) return;
+    writeSnippets(items.filter((entry) => entry.id !== id));
+    renderSnippetList();
+    toast('Deleted ' + item.name, 'info');
   }
 
   /* ------------------------------------------------------------------ *
@@ -4256,6 +4808,141 @@ Close with the main takeaway.
     toast('Downloaded ' + file, 'success');
   }
 
+  function normalizeMathExpression(value) {
+    let text = String(value || '').trim();
+    if (!text) return '';
+    text = text
+      .replace(/^\${1,2}/, '')
+      .replace(/\${1,2}$/, '')
+      .replace(/^\\\[([\s\S]*)\\\]$/, '$1')
+      .replace(/^\\\(([\s\S]*)\\\)$/, '$1')
+      .trim();
+    return text;
+  }
+
+  function mathMlMarkup(clean, display) {
+    if (!window.katex || !clean) return '';
+    try {
+      const html = window.katex.renderToString(clean, {
+        displayMode: Boolean(display),
+        output: 'mathml',
+        throwOnError: false,
+        strict: false
+      });
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const math = doc.querySelector('math');
+      return math ? math.outerHTML : html;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function mathSvgMarkup(clean, display) {
+    const preview = $('#mathExportPreview');
+    const rect = preview ? preview.getBoundingClientRect() : { width: 360, height: 80 };
+    const width = Math.max(80, Math.ceil(rect.width) + 32);
+    const height = Math.max(48, Math.ceil(rect.height) + 24);
+    const mathml = mathMlMarkup(clean, display);
+    if (!mathml) return '';
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height +
+      '" viewBox="0 0 ' + width + ' ' + height + '">' +
+      '<foreignObject x="0" y="0" width="100%" height="100%">' +
+      '<div xmlns="http://www.w3.org/1999/xhtml" style="box-sizing:border-box;width:100%;height:100%;padding:12px 16px;background:#ffffff;color:#111827;font-family:serif;font-size:18px;line-height:1.35;">' +
+      mathml + '</div></foreignObject></svg>';
+  }
+
+  function renderMathExportPreview() {
+    const source = $('#mathExportSource');
+    const preview = $('#mathExportPreview');
+    const note = $('#mathExportNote');
+    if (!source || !preview) return;
+    const clean = normalizeMathExpression(source.value);
+    const display = !!($('#mathExportDisplay') && $('#mathExportDisplay').checked);
+    if (!clean) {
+      preview.innerHTML = '<span class="math-export-empty">Enter a formula to preview it.</span>';
+      if (note) note.textContent = 'Select a formula in the editor, or edit it here.';
+      return;
+    }
+    if (!window.katex) {
+      preview.innerHTML = '<code>' + escapeHtml(clean) + '</code>';
+      return;
+    }
+    try {
+      preview.innerHTML = window.katex.renderToString(clean, {
+        displayMode: display,
+        throwOnError: false,
+        strict: false
+      });
+      if (note) note.textContent = display ? 'Display math preview' : 'Inline math preview';
+    } catch (err) {
+      preview.innerHTML = '<span class="math-export-empty">Could not render this formula.</span>';
+      if (note) note.textContent = 'Could not render this formula.';
+    }
+  }
+
+  function openMathExport() {
+    if (!cm) return;
+    let source = cm.getSelection().trim();
+    if (!source) {
+      const cursor = cm.getCursor();
+      source = (cm.getLine(cursor.line) || '').trim();
+    }
+    const input = $('#mathExportSource');
+    if (input) input.value = source;
+    const display = $('#mathExportDisplay');
+    if (display) display.checked = /^\s*\$\$|^\\\[|\\begin\{/.test(source);
+    renderMathExportPreview();
+    openModal('#mathExportModal');
+    setTimeout(() => { if (input) input.focus(); }, 40);
+  }
+
+  async function downloadMathSvg() {
+    const clean = normalizeMathExpression($('#mathExportSource') ? $('#mathExportSource').value : '');
+    const display = !!($('#mathExportDisplay') && $('#mathExportDisplay').checked);
+    const svg = mathSvgMarkup(clean, display);
+    if (!svg) {
+      toast('Nothing to export', 'warn');
+      return;
+    }
+    triggerDownload(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }), 'scidocs-math.svg');
+    toast('Downloaded SVG', 'success');
+  }
+
+  async function downloadMathPng() {
+    const clean = normalizeMathExpression($('#mathExportSource') ? $('#mathExportSource').value : '');
+    const display = !!($('#mathExportDisplay') && $('#mathExportDisplay').checked);
+    const svg = mathSvgMarkup(clean, display);
+    if (!svg) {
+      toast('Nothing to export', 'warn');
+      return;
+    }
+    try {
+      /* A data URL avoids the tainted-image restrictions that blob URLs
+         can hit for SVG documents containing foreignObject. */
+      const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+      const image = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = url;
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, image.width * 2);
+      canvas.height = Math.max(1, image.height * 2);
+      const context = canvas.getContext('2d');
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!blob) throw new Error('PNG encoding failed');
+      triggerDownload(blob, 'scidocs-math.png');
+      toast('Downloaded PNG', 'success');
+    } catch (err) {
+      console.warn('SciDocs: math PNG export failed', err);
+      toast('PNG export is unavailable in this browser', 'warn');
+    }
+  }
+
   function importTexFile() {
     const input = $('#texFileInput');
     if (!input) return;
@@ -4574,6 +5261,69 @@ Close with the main takeaway.
     $('#copyBtn').addEventListener('click', copySource);
     $('#wrapInlineBtn').addEventListener('click', () => wrapMath('inline'));
     $('#wrapDisplayBtn').addEventListener('click', () => wrapMath('display'));
+    $('#mathExportBtn').addEventListener('click', openMathExport);
+    $('#problemsBtn').addEventListener('click', () => openProblems('problems'));
+    $('#snippetsBtn').addEventListener('click', openSnippets);
+    $('#problemsTabs').addEventListener('click', (event) => {
+      const tab = event.target.closest('[data-problems-tab]');
+      if (!tab) return;
+      problemsTab = tab.dataset.problemsTab;
+      $$('#problemsTabs [data-problems-tab]').forEach((button) => {
+        button.classList.toggle('is-active', button === tab);
+      });
+      renderProblemsView(problemDiagnostics());
+    });
+    $('#problemsRecompile').addEventListener('click', () => {
+      renderProblemsView(problemDiagnostics());
+      toast('Problems rechecked', 'info');
+    });
+    $('#problemsView').addEventListener('click', (event) => {
+      const fix = event.target.closest('[data-fix-kind]');
+      if (fix) {
+        applyDiagnosticFix(fix.dataset.fixKind, fix.dataset.fixLine, fix.dataset.fixCommand);
+        renderProblemsView(problemDiagnostics());
+        return;
+      }
+      const jump = event.target.closest('[data-jump-line]');
+      if (!jump) return;
+      closeModal('#problemsModal');
+      jumpToLine(Number(jump.dataset.jumpLine));
+    });
+    $('#snippetSave').addEventListener('click', saveSnippet);
+    $('#snippetSelection').addEventListener('click', () => {
+      const body = $('#snippetBody');
+      if (body && cm) {
+        body.value = cm.getSelection() || cm.getLine(cm.getCursor().line) || '';
+        body.focus();
+      }
+    });
+    $('#snippetList').addEventListener('click', (event) => {
+      const insert = event.target.closest('[data-snippet-insert]');
+      if (insert) {
+        insertSavedSnippet(insert.dataset.snippetInsert);
+        return;
+      }
+      const remove = event.target.closest('[data-snippet-delete]');
+      if (remove) deleteSavedSnippet(remove.dataset.snippetDelete);
+    });
+    $('#mathExportSource').addEventListener('input', renderMathExportPreview);
+    $('#mathExportDisplay').addEventListener('change', renderMathExportPreview);
+    $('#mathCopyLatex').addEventListener('click', async () => {
+      const clean = normalizeMathExpression($('#mathExportSource').value);
+      if (!clean) return toast('Nothing to copy', 'warn');
+      const ok = await copyText(clean);
+      toast(ok ? 'LaTeX copied' : 'Could not copy LaTeX', ok ? 'success' : 'warn');
+    });
+    $('#mathCopyMathml').addEventListener('click', async () => {
+      const clean = normalizeMathExpression($('#mathExportSource').value);
+      const display = $('#mathExportDisplay').checked;
+      const mathml = mathMlMarkup(clean, display);
+      if (!mathml) return toast('Nothing to copy', 'warn');
+      const ok = await copyText(mathml);
+      toast(ok ? 'MathML copied' : 'Could not copy MathML', ok ? 'success' : 'warn');
+    });
+    $('#mathDownloadSvg').addEventListener('click', downloadMathSvg);
+    $('#mathDownloadPng').addEventListener('click', downloadMathPng);
     $('#nlpBtn').addEventListener('click', openNlp);
 
     const symbolSearch = $('#symbolSearch');
@@ -4751,12 +5501,14 @@ Close with the main takeaway.
     const banner = $('#syntaxBanner');
     if (banner) {
       banner.addEventListener('click', (event) => {
+        const fix = event.target.closest('[data-fix-kind]');
+        if (fix && cm) {
+          applyDiagnosticFix(fix.dataset.fixKind, fix.dataset.fixLine, fix.dataset.fixCommand);
+          return;
+        }
         const jump = event.target.closest('[data-jump-line]');
         if (!jump || !cm) return;
-        const line = Math.max(0, Number(jump.dataset.jumpLine) - 1);
-        cm.setCursor({ line, ch: 0 });
-        cm.focus();
-        cm.scrollIntoView({ line, ch: 0 }, 80);
+        jumpToLine(Number(jump.dataset.jumpLine));
       });
     }
 
