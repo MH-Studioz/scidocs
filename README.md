@@ -31,6 +31,27 @@ If you see a command rendered literally, wrap the **whole expression**, not just
 
 The syntax banner also warns when a known math command appears outside math mode and offers **Go to line**. The built-in **Symbol Lab** avoids the problem for new insertions: outside math, it inserts `$\sigma$` and leaves the cursor inside the math so you can continue typing; inside math or an equation environment, it inserts the raw command. Document structures such as sections and tables are never wrapped.
 
+### Do not nest `$$…$$` inside `equation`
+
+An `equation`, `align`, `gather` or similar environment is already in math mode. Adding display delimiters inside it is invalid and produces a red parse error such as “LaTeX could not fully parse `$$\sum_{i=1}^{n}$$`”:
+
+```latex
+% Invalid: equation is already math mode
+\begin{equation}
+  $$\sum_{i=1}^{n}$$
+\end{equation}
+```
+
+Write the formula directly instead:
+
+```latex
+\begin{equation}
+  \sum_{i=1}^{n}
+\end{equation}
+```
+
+The inline and display-math toolbar buttons now check the cursor first. If you are already inside math, they do not add extra `$` delimiters. The syntax banner reports any remaining nested `$$` with a **Go to line** button.
+
 ## Text → LaTeX
 
 The plain-English converter works instantly with local, rule-based rewriting, so it needs no account or network connection. Phrases like “x squared plus y squared” or “integral from 0 to infinity of x squared dx” become LaTeX as you type.
@@ -85,6 +106,7 @@ If the model returns invalid KaTeX, SciDocs AI automatically sends one correctio
 - **History** keeps automatic snapshots, restores previous versions, and exports/imports a JSON workspace backup.
 - **Info** explains what the browser preview supports and where a full TeX compile is needed.
 - **Guide** explains the workflow in the app; this README is the longer reference.
+- The inline/display math toolbar buttons do not add `$` delimiters when the cursor is already inside math; they show a short notice instead.
 - Projects autosave to `IndexedDB` (with a `localStorage` mirror); PDF export uses the rendered preview.
 
 ## History and backups

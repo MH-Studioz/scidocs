@@ -2714,6 +2714,14 @@ Close with the main takeaway.
       });
     });
 
+    findNestedDisplayMath(source).slice(0, 2).forEach((item) => {
+      errors.push({
+        msg: 'A $$ display delimiter appears inside ' + item.where + '.',
+        hint: 'Remove the extra $$; the equation environment already provides math mode.',
+        line: item.line
+      });
+    });
+
     return { errors, warnings };
   }
 
@@ -2912,6 +2920,72 @@ Close with the main takeaway.
       }
     }
     return display || inline || environments > 0;
+  }
+
+  function findNestedDisplayMath(source) {
+    const text = String(source || '');
+    const found = [];
+    const seen = new Set();
+    let inline = false;
+    let display = false;
+    let environments = 0;
+
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === '%') {
+        while (i < text.length && text[i] !== '\n') i++;
+        continue;
+      }
+      if (ch === '\\') {
+        if (text[i + 1] === '\\') {
+          i++;
+          continue;
+        }
+        const env = /^\\(begin|end)\s*\{([A-Za-z*]+)\}/.exec(text.slice(i, i + 40));
+        if (env) {
+          if (MATH_ENVIRONMENTS.has(env[2])) {
+            environments += env[1] === 'begin' ? 1 : -1;
+          }
+          i += env[0].length - 1;
+          continue;
+        }
+        if (text[i + 1] === '(') inline = true;
+        else if (text[i + 1] === ')') inline = false;
+        else if (text[i + 1] === '[') display = true;
+        else if (text[i + 1] === ']') display = false;
+        i++;
+        continue;
+      }
+      if (ch === '$') {
+        if (text[i + 1] === '$') {
+          const line = lineOf(text, i);
+          if (environments > 0 || inline) {
+            const key = line + ':env';
+            if (!seen.has(key)) {
+              seen.add(key);
+              found.push({ line, where: environments > 0 ? 'environment' : 'inline math' });
+            }
+          } else {
+            display = !display;
+          }
+          i++;
+        } else {
+          inline = !inline;
+        }
+      }
+    }
+    return found;
+  }
+
+  function wrapMath(kind) {
+    if (!cm) return;
+    const from = cm.getCursor('from');
+    if (mathModeAt(cm.getValue(), cm.indexFromPos(from))) {
+      toast('Already inside math mode — no extra $ added.', 'info');
+      cm.focus();
+      return;
+    }
+    insertSnippet(kind === 'display' ? '$$' + CURSOR + '$$' : '$' + CURSOR + '$');
   }
 
   function insertSymbol(item, isMath) {
@@ -4439,8 +4513,8 @@ Close with the main takeaway.
       if (button) loadTemplate(button.dataset.template);
     });
     $('#copyBtn').addEventListener('click', copySource);
-    $('#wrapInlineBtn').addEventListener('click', () => insertSnippet('$' + CURSOR + '$'));
-    $('#wrapDisplayBtn').addEventListener('click', () => insertSnippet('$$' + CURSOR + '$$'));
+    $('#wrapInlineBtn').addEventListener('click', () => wrapMath('inline'));
+    $('#wrapDisplayBtn').addEventListener('click', () => wrapMath('display'));
     $('#nlpBtn').addEventListener('click', openNlp);
 
     const symbolSearch = $('#symbolSearch');

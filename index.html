@@ -21,7 +21,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/show-hint.min.css" />
-  <link rel="stylesheet" href="styles.css?v=37" />
+  <link rel="stylesheet" href="styles.css?v=38" />
 
   <script defer src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
@@ -33,7 +33,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/selection/active-line.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/show-hint.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
-  <script defer src="app.js?v=37"></script>
+  <script defer src="app.js?v=38"></script>
 </head>
 
 <body class="app">
@@ -297,6 +297,11 @@ $$\sigma * 8$$     → display math</pre>
             <li><code>$$\sigma * 8$$</code> for a centered display equation.</li>
             <li><code>\begin{equation} \sigma * 8 \end{equation}</code> for a numbered equation.</li>
           </ul>
+          <p><strong>Do not nest <code>$$…$$</code> inside <code>equation</code> or <code>align</code>.</strong> The environment is already math mode. Write the formula directly:</p>
+          <pre class="guide-code">\begin{equation}
+  \sum_{i=1}^{n}
+\end{equation}</pre>
+          <p>The inline and display-math toolbar buttons now detect that you are already inside math and will not add duplicate dollar signs.</p>
         </section>
 
         <section class="guide-section">
@@ -311,7 +316,7 @@ $$\sigma * 8$$     → display math</pre>
 
         <section class="guide-section">
           <h3>4. Check errors before exporting</h3>
-          <p>The banner under the editor reports unbalanced braces, dollar signs and environments. When it shows an issue, use <strong>Go to line</strong> to jump to it. The <strong>Info</strong> button explains which LaTeX features the browser preview supports.</p>
+          <p>The banner under the editor reports unbalanced braces, dollar signs, nested math delimiters and environments. When it shows an issue, use <strong>Go to line</strong> to jump to it. The <strong>Info</strong> button explains which LaTeX features the browser preview supports.</p>
         </section>
 
         <section class="guide-section">
