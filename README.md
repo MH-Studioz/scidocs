@@ -2,7 +2,7 @@
 
 https://mh-studioz.github.io/scidocs/
 
-v1.2.1
+v1.3.0
 
 [Release notes](CHANGELOG.md)
 
@@ -71,6 +71,9 @@ Open **Snippets** in the top bar to save reusable LaTeX fragments. Give each sni
 - Type the trigger in the editor and press **Ctrl/Cmd + Space** to insert the snippet from autocomplete.
 - **Insert** places the snippet at the current cursor; **Use editor selection** fills the body from the selected text.
 - The delete button removes a snippet from this browser. Snippets are not uploaded or included in project backups.
+- A body can mark several placeholders: `[[CURSOR]]` is the first stop, `[[CURSOR:2]]`, `[[CURSOR:3]]`… follow. After inserting, **Tab** and **Shift-Tab** step through them; clicking in the editor ends the walk. The toolbar’s fraction and binomial inserts use two stops.
+
+Document macros declared with `\newcommand`, `\def` or `\DeclareMathOperator` are expanded in math and in prose, and show up in command autocomplete together with your saved snippet triggers. `\def` parameters such as `\def\pair#1#2{\langle #1, #2\rangle}` are supported. A body built only from math commands (`\newcommand{\R}{\mathbb{R}}`, `\def\pair#1#2{\langle #1, #2\rangle}`) is rendered as inline math when the macro is used in prose. Optional-argument defaults (`\newcommand{\x}[1][default]{…}`) are not supported.
 
 ## Copy and export math
 

@@ -22,7 +22,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/show-hint.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/dialog/dialog.min.css" />
-  <link rel="stylesheet" href="styles.css?v=1.2.1" />
+  <link rel="stylesheet" href="styles.css?v=1.3.0" />
 
   <script defer src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
@@ -37,7 +37,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/searchcursor.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/search.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
-  <script defer src="app.js?v=1.2.1"></script>
+  <script defer src="app.js?v=1.3.0"></script>
 </head>
 
 <body class="app">
@@ -345,7 +345,7 @@ $$\sigma * 8$$     → display math</pre>
 
         <section class="guide-section">
           <h3>6. Keyboard shortcuts</h3>
-          <p><code>Ctrl/Cmd + Enter</code> compile · <code>Ctrl/Cmd + S</code> save · <code>Ctrl/Cmd + Space</code> command suggestions · <code>Alt + /</code> fallback when Spotlight captures Cmd + Space · <code>Ctrl/Cmd + F</code> find · <code>Ctrl/Cmd + H</code> find and replace · <code>Ctrl/Cmd + K</code> Text → LaTeX.</p>
+          <p><code>Ctrl/Cmd + Enter</code> compile · <code>Ctrl/Cmd + S</code> save · <code>Ctrl/Cmd + Space</code> command suggestions · <code>Alt + /</code> fallback when Spotlight captures Cmd + Space · <code>Ctrl/Cmd + F</code> find · <code>Ctrl/Cmd + H</code> find and replace · <code>Ctrl/Cmd + K</code> Text → LaTeX. <code>Tab</code> / <code>Shift + Tab</code> step through the tab stops of a snippet you just inserted.</p>
         </section>
       </div>
       <div class="modal-foot">
@@ -424,7 +424,7 @@ $$\sigma * 8$$     → display math</pre>
         <div class="snippet-list" id="snippetList"></div>
       </div>
       <div class="modal-foot">
-        <p class="hint">Type the trigger in the editor, then press Ctrl/Cmd + Space to autocomplete.</p>
+        <p class="hint">Type the trigger in the editor, then press Ctrl/Cmd + Space to autocomplete. In a body, <code>[[CURSOR]]</code> marks the first tab stop and <code>[[CURSOR:2]]</code> the next; Tab and Shift-Tab step through them after inserting.</p>
         <div class="modal-actions"><button class="btn btn-ghost" type="button" data-close-modal>Close</button></div>
       </div>
     </div>

@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.3.0] - 2026-11-21
+
+### Added
+
+- **Snippet tab stops.** A snippet body can mark several placeholders with `[[CURSOR]]`, `[[CURSOR:2]]`, `[[CURSOR:3]]`… After inserting, **Tab** and **Shift-Tab** walk the stops and clicking in the editor ends the walk. The fraction and binomial toolbar inserts now use two stops.
+- **Document macros in prose.** Macros declared with `\newcommand`, `\def` (including parameters) or `\DeclareMathOperator` are expanded in text as well as math, and user-defined macros appear in `\` autocomplete.
+
+### Fixed
+
+- `\def\name#1#2{…}` definitions were not collected before; parameter text is now parsed, so parameterised `\def` macros expand.
+
 ## [1.2.1] - 2026-11-20
 
 ### Changed

@@ -7,6 +7,7 @@
 
   const R = String.raw;
   const CURSOR = '[[CURSOR]]';
+  const CURSOR2 = '[[CURSOR:2]]';
   const STORE_KEY = 'latexlab.workspace.v1';
   const PREFS_KEY = 'latexlab.prefs.v1';
   const DB_NAME = 'scidocs.db';
@@ -412,7 +413,7 @@ Close with the main takeaway.
         { display: '\\partial', label: 'Partial', insert: '\\partial ' },
         { display: '\\nabla', label: 'Nabla', insert: '\\nabla ' },
         { display: '\\infty', label: 'Infinity', insert: '\\infty ' },
-        { display: '\\frac{a}{b}', label: 'Fraction', insert: '\\frac{' + CURSOR + '}{}' },
+        { display: '\\frac{a}{b}', label: 'Fraction', insert: '\\frac{' + CURSOR + '}{' + CURSOR2 + '}' },
         { display: '\\sqrt{x}', label: 'Square root', insert: '\\sqrt{' + CURSOR + '}' },
         { display: '\\sin x', label: 'sine', insert: '\\sin ' },
         { display: '\\cos x', label: 'cosine', insert: '\\cos ' },
@@ -435,7 +436,7 @@ Close with the main takeaway.
       items: [
         { display: 'x^2', label: 'Inline math', insert: '$' + CURSOR + ' $' },
         { display: '\\sum_{i=1}^{n} x_i', label: 'Display math', insert: '$$' + CURSOR + ' $$' },
-        { display: '\\binom{n}{k}', label: 'Binomial', insert: '\\binom{' + CURSOR + '}{}' },
+        { display: '\\binom{n}{k}', label: 'Binomial', insert: '\\binom{' + CURSOR + '}{' + CURSOR2 + '}' },
         { display: '\\boxed{E=mc^2}', label: 'Boxed', insert: '\\boxed{' + CURSOR + '}' },
         { display: '\\text{if } x>0', label: 'Text in math', insert: '\\text{' + CURSOR + '}' },
         { display: '\\left(\\frac{a}{b}\\right)', label: 'Parentheses', insert: '\\left( ' + CURSOR + ' \\right)' },
@@ -2011,7 +2012,11 @@ Close with the main takeaway.
 
   function renderInline(raw, ctx) {
     if (raw == null) return '';
-    const text = String(raw);
+    /* Expand macros before math is split out, so a math-only macro used in
+       prose can become an inline math segment. */
+    const text = ctx && ctx.macroMap && ctx.macroMap.size
+      ? expandTextMacros(String(raw), ctx.macroMap, 0)
+      : String(raw);
     let out = '';
     let last = 0;
     let m;
@@ -2028,6 +2033,62 @@ Close with the main takeaway.
       last = m.index + m[0].length;
     }
     out += renderText(text.slice(last), ctx);
+    return out;
+  }
+
+  /* Document macros can also be used outside math: \newcommand{\proj}{Projection}
+     then “the \proj operator”. KaTeX receives the same definitions for math, so
+     this only covers prose. Arguments are substituted left to right, and the
+     depth cap stops a macro that expands to itself. */
+  function expandTextMacros(text, defs, depth) {
+    if (!defs || !defs.size || depth > 6) return text;
+    let out = '';
+    let i = 0;
+    let inMath = false;
+    while (i < text.length) {
+      if (text[i] === '$') { inMath = !inMath; out += text[i]; i += 1; continue; }
+      if (text[i] !== '\\') { out += text[i]; i += 1; continue; }
+      const m = /^\\([A-Za-z]+)\*?/.exec(text.slice(i, i + 40));
+      if (!m) {
+        out += text[i];
+        if (text[i + 1] && '$%&#_{}'.indexOf(text[i + 1]) >= 0) { out += text[i + 1]; i += 2; } else { i += 1; }
+        continue;
+      }
+      const def = defs.get(m[1]);
+      if (!def) { out += text[i]; i += 1; continue; }
+      let k = i + m[0].length;
+      const args = [];
+      let ok = true;
+      for (let a = 0; a < def.args; a += 1) {
+        k = skipTexSpace(text, k);
+        if (text[k] === '{') {
+          const group = readTexGroup(text, k);
+          if (!group) { ok = false; break; }
+          args.push(group.content);
+          k = group.end;
+        } else if (text[k] === '[') {
+          const opt = readTexBracket(text, k);
+          if (!opt) { ok = false; break; }
+          args.push(opt.content);
+          k = opt.end;
+        } else if (k < text.length) {
+          args.push(text[k]);
+          k += 1;
+        } else { ok = false; break; }
+      }
+      if (!ok) { out += text[i]; i += 1; continue; }
+      let body = def.body;
+      if (def.args) {
+        body = body.replace(/#([1-9])/g, (token, n) => {
+          const value = args[Number(n) - 1];
+          return value === undefined ? '' : value;
+        });
+      }
+      let expanded = expandTextMacros(body, defs, depth + 1);
+      if (def.math && !inMath && !/^\s*\$/.test(expanded)) expanded = '$' + expanded + '$';
+      out += expanded;
+      i = k;
+    }
     return out;
   }
 
@@ -2537,36 +2598,85 @@ Close with the main takeaway.
     return out;
   }
 
+  /* A body built only from math commands (\mathbb{R}, \langle #1, #2\rangle)
+     renders as inline math when the macro is used in prose. */
+  const MATH_MACRO_COMMAND = /\\(?:mathbb|mathcal|mathbf|mathrm|mathit|mathsf|mathtt|operatorname|frac|tfrac|dfrac|sqrt|sum|prod|int|lim|partial|nabla|infty|langle|rangle|lVert|rVert|vec|hat|bar|tilde|dot|ddot|left|right|cdot|times|pm|mp|leq|geq|neq|approx|equiv|propto|subset|supset|in|forall|exists|to|mapsto|rightarrow|leftarrow|Rightarrow|Leftrightarrow|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|nu|xi|pi|rho|sigma|tau|phi|chi|psi|omega|hbar|ell)/;
+
+  function mathMacroBody(body) {
+    const src = String(body || '');
+    if (!MATH_MACRO_COMMAND.test(src)) return false;
+    const prose = src
+      .replace(/\\[A-Za-z]+\s*\{[^{}]*\}/g, '')
+      .replace(/\\[A-Za-z]+/g, '')
+      .replace(/#\d/g, '');
+    return !/[A-Za-z]{2,}/.test(prose);
+  }
+
   function collectUserMacros(src) {
     const macros = {};
+    const defs = [];
+    const text = String(src || '');
     const defRe = /\\(newcommand|renewcommand|providecommand)\*?\s*\{?\s*\\([A-Za-z]+)\s*\}?\s*(?:\[(\d)\])?\s*\{/g;
     let m;
-    while ((m = defRe.exec(src)) !== null) {
+    const remember = (name, args, body) => {
+      macros['\\' + name] = body;
+      defs.push({ name, args, body, math: mathMacroBody(body) });
+    };
+    while ((m = defRe.exec(text)) !== null) {
       const open = m.index + m[0].length - 1;
-      const close = matchBrace(src, open);
+      const close = matchBrace(text, open);
       if (close < 0) continue;
-      macros['\\' + m[2]] = src.slice(open + 1, close);
+      remember(m[2], m[3] ? Number(m[3]) : 0, text.slice(open + 1, close));
     }
-    const defPlain = /\\def\s*\\([A-Za-z]+)\s*\{/g;
-    while ((m = defPlain.exec(src)) !== null) {
+    const defPlain = /\\def\s*\\([A-Za-z]+)((?:#\d)+)?\s*\{/g;
+    while ((m = defPlain.exec(text)) !== null) {
       const open = m.index + m[0].length - 1;
-      const close = matchBrace(src, open);
+      const close = matchBrace(text, open);
       if (close < 0) continue;
-      macros['\\' + m[1]] = src.slice(open + 1, close);
+      remember(m[1], m[2] ? (m[2].match(/#/g) || []).length : 0, text.slice(open + 1, close));
     }
     const opRe = /\\DeclareMathOperator\*?\s*\{\\([A-Za-z]+)\}\s*\{([^{}]*)\}/g;
-    while ((m = opRe.exec(src)) !== null) {
-      macros['\\' + m[1]] = '\\operatorname{' + m[2] + '}';
+    while ((m = opRe.exec(text)) !== null) {
+      remember(m[1], 0, '\\operatorname{' + m[2] + '}');
     }
-    return macros;
+    return { macros, defs };
+  }
+
+  /* Blank out macro definitions so document checks do not treat their bodies
+     as prose. Every replacement keeps the line structure intact. */
+  function maskMacroDefs(src) {
+    const text = String(src || '');
+    const patterns = [
+      /\\(?:newcommand|renewcommand|providecommand)\*?\s*\{?\s*\\[A-Za-z]+\s*\}?\s*(?:\[\d\])?\s*\{/g,
+      /\\def\s*\\[A-Za-z]+(?:#\d)*\s*\{/g,
+      /\\DeclareMathOperator\*?\s*\{\\[A-Za-z]+\}\s*\{/g
+    ];
+    let out = text;
+    patterns.forEach((re) => {
+      re.lastIndex = 0;
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        const open = m.index + m[0].length - 1;
+        const close = matchBrace(text, open);
+        if (close < 0) continue;
+        const blank = text.slice(m.index, close + 1).replace(/[^\n]/g, ' ');
+        out = out.slice(0, m.index) + blank + out.slice(close + 1);
+      }
+    });
+    return out;
   }
 
   function sourceLineWithoutComment(line) {
     return String(line || '').replace(/(^|[^\\])%.*$/, '$1');
   }
 
-  function parseReferenceIndex(source) {
-    const lines = String(source || '').split('\n');
+  function parseReferenceIndex(source, macroMap) {
+    /* Expand document macros first so a \\figref{fig:one} that becomes
+       \\ref{fig:one} counts as a reference to the label. */
+    const expanded = macroMap && macroMap.size
+      ? expandTextMacros(String(source || ''), macroMap, 0)
+      : String(source || '');
+    const lines = expanded.split('\n');
     const labels = [];
     const refs = [];
     const labelMap = new Map();
@@ -2642,7 +2752,7 @@ Close with the main takeaway.
           return;
         }
         if (event.type === 'label') {
-          if (!event.name) return;
+          if (!event.name || event.name.indexOf('#') >= 0) return;
           const current = envStack.length ? envStack[envStack.length - 1] : null;
           let kind = 'section';
           let number = '';
@@ -2663,7 +2773,7 @@ Close with the main takeaway.
           if (!labelMap.has(event.name)) labelMap.set(event.name, entry);
           return;
         }
-        if (event.type === 'ref' && event.name) {
+        if (event.type === 'ref' && event.name && event.name.indexOf('#') < 0) {
           refs.push({ name: event.name, line: lineIndex + 1, command: event.command });
         }
       });
@@ -2933,8 +3043,10 @@ Close with the main takeaway.
   function compileDocument(source) {
     const src = stripComments(source);
     const ctx = makeCtx({});
-    ctx.macros = collectUserMacros(src);
-    ctx.references = parseReferenceIndex(src);
+    const macroSet = collectUserMacros(src);
+    ctx.macros = macroSet.macros;
+    ctx.macroMap = new Map(macroSet.defs.map((def) => [def.name, def]));
+    ctx.references = parseReferenceIndex(src, ctx.macroMap);
     ctx.citations = parseCitations(src);
     ctx.bibliography = Array.from(ctx.citations.entryMap.values());
 
@@ -3730,26 +3842,76 @@ Close with the main takeaway.
     insertSnippet(text);
   }
 
+  /* Snippets may contain several placeholders: [[CURSOR]] is the first stop,
+     [[CURSOR:2]], [[CURSOR:3]]… follow it. Tab walks forward, Shift-Tab back. */
+  const CURSOR_STOP_RE = /\[\[CURSOR(?::(\d+))?\]\]/g;
+  let snippetTour = null;
+
+  function snippetTourEnd() {
+    if (!snippetTour) return;
+    snippetTour.marks.forEach((mark) => { try { mark.clear(); } catch (_) { /* ignore */ } });
+    snippetTour = null;
+  }
+
+  function snippetTourJump(direction) {
+    if (!snippetTour) return false;
+    if (!cm || snippetTour.doc !== cm.getDoc()) { snippetTourEnd(); return false; }
+    const index = snippetTour.at + direction;
+    if (index < 0 || index >= snippetTour.marks.length) {
+      /* Past the last stop the walk ends and the key press is swallowed, so it
+         cannot leave a stray indentation inside the snippet. */
+      snippetTourEnd();
+      return true;
+    }
+    const pos = snippetTour.marks[index].find();
+    if (!pos) { snippetTourEnd(); return false; }
+    snippetTour.at = index;
+    cm.setCursor(pos);
+    cm.scrollIntoView(pos, 60);
+    return true;
+  }
+
   function insertSnippet(snippet) {
     if (!cm) return;
     const doc = cm.getDoc();
     const from = doc.getCursor('from');
     const selection = doc.getSelection();
-    const marker = snippet.indexOf(CURSOR);
-    let text = snippet;
-    let offset;
+    const source = String(snippet || '');
+    const stops = [];
+    let cleaned = '';
+    let last = 0;
+    let match;
+    CURSOR_STOP_RE.lastIndex = 0;
+    while ((match = CURSOR_STOP_RE.exec(source)) !== null) {
+      cleaned += source.slice(last, match.index);
+      stops.push({ order: match[1] ? Number(match[1]) : 1, offset: cleaned.length });
+      last = match.index + match[0].length;
+    }
+    cleaned += source.slice(last);
+    stops.sort((a, b) => (a.order - b.order) || (a.offset - b.offset));
 
-    if (marker >= 0 && selection) {
-      text = snippet.slice(0, marker) + selection + snippet.slice(marker + CURSOR.length);
-      offset = marker + selection.length;
-    } else {
-      text = snippet.split(CURSOR).join('');
-      offset = marker >= 0 ? marker : text.length;
+    let text = cleaned;
+    let cursorOffset = text.length;
+    if (stops.length) {
+      cursorOffset = stops[0].offset;
+      if (selection) {
+        text = text.slice(0, stops[0].offset) + selection + text.slice(stops[0].offset);
+        cursorOffset = stops[0].offset + selection.length;
+        stops.slice(1).forEach((stop) => { stop.offset += selection.length; });
+      }
     }
 
     const startIndex = doc.indexFromPos(from);
+    snippetTourEnd();
     doc.replaceSelection(text, 'end');
-    doc.setCursor(doc.posFromIndex(startIndex + offset));
+    if (stops.length > 1) {
+      snippetTour = {
+        doc,
+        at: 0,
+        marks: stops.map((stop) => doc.setBookmark(doc.posFromIndex(startIndex + stop.offset)))
+      };
+    }
+    doc.setCursor(doc.posFromIndex(startIndex + cursorOffset));
     cm.focus();
   }
 
@@ -3776,7 +3938,7 @@ Close with the main takeaway.
   }
 
   function findMathCommandsOutsideMath(source) {
-    const text = String(source || '');
+    const text = maskMacroDefs(source);
     const names = mathCommandSet();
     const found = [];
     const seen = new Set();
@@ -3910,7 +4072,10 @@ Close with the main takeaway.
     const commands = latexHintCommands()
       .filter((cmd) => cmd.slice(1).toLowerCase().startsWith(term))
       .map((cmd) => ({ text: cmd, displayText: cmd }));
-    const list = snippets.concat(commands);
+    const docMacros = Object.keys(collectUserMacros(instance.getValue()).macros)
+      .filter((name) => name.slice(1).toLowerCase().startsWith(term))
+      .map((name) => ({ text: name, displayText: name + ' · macro in this document' }));
+    const list = snippets.concat(docMacros, commands);
     if (!list.length) return null;
     return {
       list: list.slice(0, 40),
@@ -3974,7 +4139,9 @@ Close with the main takeaway.
         'Cmd-Alt-F': 'replace',
         'Shift-Ctrl-F': 'replace',
         'F3': 'findPersistentNext',
-        'Shift-F3': 'findPersistentPrev'
+        'Shift-F3': 'findPersistentPrev',
+        'Tab': () => { if (!snippetTourJump(1)) cm.execCommand('defaultTab'); },
+        'Shift-Tab': () => { if (!snippetTourJump(-1)) cm.execCommand('indentLess'); }
       }
     });
 
@@ -3983,6 +4150,7 @@ Close with the main takeaway.
       scheduleRender();
     });
     cm.on('cursorActivity', updateCursorPos);
+    cm.on('mousedown', () => snippetTourEnd());
     updateCursorPos();
   }
 
