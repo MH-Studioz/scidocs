@@ -10,6 +10,11 @@
   const CURSOR2 = '[[CURSOR:2]]';
   const STORE_KEY = 'latexlab.workspace.v1';
   const PREFS_KEY = 'latexlab.prefs.v1';
+  const IMAGE_MAX_BYTES = 1.5 * 1024 * 1024;
+  const IMAGE_TOTAL_BYTES = 4 * 1024 * 1024;
+  const IMAGE_SHARE_BYTES = 250 * 1024;
+  const IMAGE_KEY_LIMIT = 12;
+  const IMAGE_DATA_URL = /^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/;
   const DB_NAME = 'scidocs.db';
   const DB_VERSION = 1;
   const SNAPSHOT_LIMIT = 20;
@@ -862,7 +867,57 @@ Close with the main takeaway.
   }
 
   function workspacePayload() {
-    return { version: 1, activeId: state.activeId, projects: state.projects };
+    return { version: 2, activeId: state.activeId, projects: state.projects };
+  }
+
+  /* Images attached to a project are stored in its workspace record as data
+     URLs. Caps keep the record inside browser storage limits. */
+  function sanitizeImages(raw) {
+    if (!raw || typeof raw !== 'object') return {};
+    const out = {};
+    let total = 0;
+    Object.keys(raw).slice(0, IMAGE_KEY_LIMIT).forEach((key) => {
+      const value = raw[key];
+      if (typeof value !== 'string' || !IMAGE_DATA_URL.test(value)) return;
+      const bytes = Math.round(value.length * 0.75);
+      if (bytes > IMAGE_MAX_BYTES || total + bytes > IMAGE_TOTAL_BYTES) return;
+      total += bytes;
+      out[String(key).slice(0, 120)] = value;
+    });
+    return out;
+  }
+
+  function projectImages() {
+    const project = activeProject();
+    if (!project) return {};
+    if (!project.images || typeof project.images !== 'object') project.images = {};
+    return project.images;
+  }
+
+  function imageFor(ctx, name) {
+    const images = (ctx && ctx.images) || {};
+    const wanted = String(name || '').trim();
+    if (!wanted) return '';
+    if (images[wanted]) return images[wanted];
+    const base = wanted.split('/').pop();
+    if (images[base]) return images[base];
+    const key = Object.keys(images).find((entry) => entry.split('/').pop() === base);
+    return key ? images[key] : '';
+  }
+
+  function imageWidthStyle(options) {
+    const opts = String(options || '');
+    const fraction = /width\s*=\s*([0-9.]+)\s*\\(?:textwidth|linewidth|columnwidth|hsize)/.exec(opts);
+    if (fraction) {
+      const percent = Math.max(2, Math.min(100, parseFloat(fraction[1]) * 100));
+      return 'width:' + percent + '%';
+    }
+    const absolute = /width\s*=\s*([0-9.]+)\s*(cm|mm|in|pt)/.exec(opts);
+    if (absolute) {
+      const unit = { cm: 37.8, mm: 3.78, in: 96, pt: 1.33 }[absolute[2]] || 1;
+      return 'width:' + Math.round(parseFloat(absolute[1]) * unit) + 'px';
+    }
+    return '';
   }
 
   function persist() {
@@ -899,6 +954,7 @@ Close with the main takeaway.
         id: String(p.id || uid()),
         name: String(p.name || 'Untitled Document'),
         content,
+        images: sanitizeImages(p.images),
         updatedAt: Number(p.updatedAt) || Date.now()
       };
     });
@@ -1090,9 +1146,11 @@ Close with the main takeaway.
     saveNow();
     const payload = {
       app: 'SciDocs',
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
-      projects: state.projects.map(({ id, name, content, updatedAt }) => ({ id, name, content, updatedAt }))
+      projects: state.projects.map(({ id, name, content, updatedAt, images }) =>
+        ({ id, name, content, updatedAt, images: sanitizeImages(images) })),
+      library: { bib: readBibText(), snippets: readSnippets() }
     };
     triggerDownload(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }), 'scidocs-backup.json');
     toast('Workspace backup downloaded', 'success');
@@ -1142,6 +1200,7 @@ Close with the main takeaway.
             id: uid(),
             name,
             content: String(p && typeof p.content === 'string' ? p.content : ''),
+            images: sanitizeImages(p && p.images),
             updatedAt: Date.now()
           };
         });
@@ -1149,6 +1208,14 @@ Close with the main takeaway.
         state.activeId = imported[0].id;
         lastSnapshotAt = 0;
         persist();
+        const library = data.library || {};
+        const bibAdded = mergeBibText(library.bib);
+        const snippetAdded = mergeSnippets(library.snippets);
+        if (bibAdded || snippetAdded) {
+          toast('Also restored ' + [bibAdded ? 'the bibliography' : '',
+            snippetAdded ? snippetAdded + ' snippet' + (snippetAdded === 1 ? '' : 's') : '']
+            .filter(Boolean).join(' and '), 'success');
+        }
         renderProjectSelect();
         if (cm) {
           cm.setValue(imported[0].content);
@@ -1402,6 +1469,28 @@ Close with the main takeaway.
     proof: 'Proof'
   };
 
+  /* Theorem-like environments are numbered per kind, unless \newtheorem shares
+     a counter or asks for numbering within sections. Proof stays unnumbered. */
+  function collectTheoremDefs(src) {
+    const defs = {};
+    Object.keys(THEOREM_ENVS).forEach((env) => {
+      defs[env] = { name: THEOREM_ENVS[env], counter: env, within: '', numbered: env !== 'proof' };
+    });
+    const text = maskMacroDefs(src);
+    const re = /\\newtheorem\*?\s*\{([A-Za-z*]+)\}\s*(?:\[([^\]]*)\])?\s*\{([^{}]*)\}\s*(?:\[([^\]]*)\])?/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      defs[m[1]] = {
+        name: m[3].trim() || m[1],
+        counter: (m[2] || m[1]).trim(),
+        within: (m[4] || '').trim(),
+        numbered: true
+      };
+    }
+    return defs;
+  }
+
+
   const BLOCK_RE = /\\begin\s*\{([A-Za-z*]+)\}|\\(maketitle|tableofcontents|newpage|clearpage|pagebreak|hrule|hrulefill)\b|\\(chapter|section|subsection|subsubsection|paragraph|subparagraph)(\*?)\s*(?:\[[^\]]*\]\s*)?\{/g;
 
   function makeCtx(meta) {
@@ -1411,6 +1500,8 @@ Close with the main takeaway.
       warnings: [],
       headings: [],
       references: null,
+      theorems: null,
+      theoremCounters: {},
       counters: {
         chapter: 0,
         section: 0,
@@ -1986,10 +2077,13 @@ Close with the main takeaway.
   }
 
   function renderMath(expr, display, ctx) {
-    const clean = expandPhysicsMacros(String(expr)
+    let source = String(expr)
       .replace(/\\label\s*\{[^}]*\}/g, '')
-      .replace(/\\(nonumber|notag)\b/g, ''))
-      .trim();
+      .replace(/\\(nonumber|notag)\b/g, '');
+    if (ctx && ctx.macroMap && ctx.macroMap.size) {
+      source = expandTextMacros(source, ctx.macroMap, 0, false);
+    }
+    const clean = expandPhysicsMacros(source).trim();
     if (!clean) return '';
     if (!window.katex) {
       return '<code class="math-fallback">' + escapeHtml(clean) + '</code>';
@@ -2040,7 +2134,8 @@ Close with the main takeaway.
      then “the \proj operator”. KaTeX receives the same definitions for math, so
      this only covers prose. Arguments are substituted left to right, and the
      depth cap stops a macro that expands to itself. */
-  function expandTextMacros(text, defs, depth) {
+  function expandTextMacros(text, defs, depth, wrapMath) {
+    const wrap = wrapMath !== false;
     if (!defs || !defs.size || depth > 6) return text;
     let out = '';
     let i = 0;
@@ -2059,7 +2154,20 @@ Close with the main takeaway.
       let k = i + m[0].length;
       const args = [];
       let ok = true;
-      for (let a = 0; a < def.args; a += 1) {
+      if (def.opt !== null && def.opt !== undefined) {
+        k = skipTexSpace(text, k);
+        let optional;
+        if (text[k] === '[') {
+          const bracket = readTexBracket(text, k);
+          if (bracket) { optional = bracket.content; k = bracket.end; }
+        } else if (text[k] === '{') {
+          /* Accept braces for an optional argument too: \\norm{y}. */
+          const group = readTexGroup(text, k);
+          if (group) { optional = group.content; k = group.end; }
+        }
+        args.push(optional === undefined ? def.opt : optional);
+      }
+      for (let a = args.length; a < def.args; a += 1) {
         k = skipTexSpace(text, k);
         if (text[k] === '{') {
           const group = readTexGroup(text, k);
@@ -2085,7 +2193,7 @@ Close with the main takeaway.
         });
       }
       let expanded = expandTextMacros(body, defs, depth + 1);
-      if (def.math && !inMath && !/^\s*\$/.test(expanded)) expanded = '$' + expanded + '$';
+      if (def.math && wrap && !inMath && !/^\s*\$/.test(expanded)) expanded = '$' + expanded + '$';
       out += expanded;
       i = k;
     }
@@ -2136,6 +2244,7 @@ Close with the main takeaway.
         const entry = ctx && ctx.references && ctx.references.labelMap.get(a);
         const kind = entry && entry.kind === 'figure' ? 'Figure ' :
           entry && entry.kind === 'table' ? 'Table ' :
+          entry && entry.kind === 'theorem' ? ((entry.kindLabel || 'Theorem') + ' ') :
           entry && entry.kind === 'section' ? 'Section ' : 'Equation ';
         return hold('<span class="doc-ref' + (entry ? '' : ' is-missing') + '">' +
           escapeHtml(entry ? kind + entry.number : '??') + '</span>');
@@ -2397,10 +2506,13 @@ Close with the main takeaway.
   }
 
   function renderFloat(kind, inner, ctx) {
-    const caption = grabArg(inner, 'caption') || '';
-    let cleaned = removeArgCommand(inner, 'caption');
-    const graphic = grabArg(cleaned, 'includegraphics');
-    if (graphic) cleaned = removeArgCommand(cleaned, 'includegraphics');
+    const source = String(inner);
+    const graphicMatch = /\\includegraphics\s*(?:\[([^\]]*)\])?\s*\{([^}]*)\}/.exec(source);
+    const graphic = graphicMatch ? graphicMatch[2].trim() : '';
+    const graphicOptions = graphicMatch ? graphicMatch[1] || '' : '';
+    const caption = grabArg(source, 'caption') || '';
+    let cleaned = removeArgCommand(source, 'caption');
+    if (graphicMatch) cleaned = cleaned.replace(graphicMatch[0], '');
     let body = renderBlocks(cleaned, ctx);
 
     if (kind === 'table') {
@@ -2417,7 +2529,13 @@ Close with the main takeaway.
 
     ctx.counters.figure += 1;
     if (graphic) {
-      body = '<div class="doc-figure-box">' + escapeHtml(shorten(graphic, 64)) + '</div>' + body;
+      const url = imageFor(ctx, graphic);
+      const style = imageWidthStyle(graphicOptions);
+      body = (url
+        ? '<div class="doc-figure-media"><img src="' + url + '" alt="' +
+          escapeHtml(shorten(graphic, 64)) + '" loading="lazy"' + (style ? ' style="' + style + '"' : '') + ' /></div>'
+        : '<div class="doc-figure-box"><span>' + escapeHtml(shorten(graphic, 64)) +
+          '</span><span class="doc-figure-note">not attached — open Images</span></div>') + body;
     }
     return (
       '<figure class="doc-figure">' + body +
@@ -2437,9 +2555,20 @@ Close with the main takeaway.
       custom = opt[1];
       body = body.slice(opt[0].length);
     }
+    const def = (ctx && ctx.theorems && ctx.theorems[name]) ||
+      { name: THEOREM_ENVS[name] || name, counter: name, within: '', numbered: true };
+    let number = '';
+    if (def.numbered) {
+      const sectionLabel = [ctx.counters.chapter, ctx.counters.section]
+        .filter((value) => value > 0).join('.');
+      const scope = def.within === 'section' ? sectionLabel : '';
+      const key = def.counter + '@' + scope;
+      ctx.theoremCounters[key] = (ctx.theoremCounters[key] || 0) + 1;
+      number = (scope ? scope + '.' : '') + ctx.theoremCounters[key];
+    }
     return (
       '<div class="doc-theorem"><span class="doc-theorem-label">' +
-      escapeHtml(THEOREM_ENVS[name] || name) +
+      escapeHtml((def.name || name) + (number ? ' ' + number : '')) +
       (custom ? ' (' + escapeHtml(custom) + ')' : '') +
       '</span>' + renderBlocks(body, ctx) + '</div>'
     );
@@ -2458,7 +2587,30 @@ Close with the main takeaway.
     );
   }
 
+  function renderCustomEnvironment(def, inner, ctx) {
+    let body = String(inner);
+    const args = [];
+    if (def.opt !== null && def.opt !== undefined) {
+      const lead = /^\s*\[([^\]]*)\]/.exec(body);
+      if (lead) { args.push(lead[1]); body = body.slice(lead[0].length); }
+      else args.push(def.opt);
+    }
+    while (args.length < def.args) {
+      const lead = /^\s*\{/.exec(body);
+      if (!lead) break;
+      const open = lead[0].length - 1;
+      const close = matchBrace(body, open);
+      if (close < 0) break;
+      args.push(body.slice(open + 1, close));
+      body = body.slice(close + 1);
+    }
+    const fill = (snippet) => String(snippet || '').replace(/#([1-9])/g, (token, n) =>
+      (args[Number(n) - 1] === undefined ? '' : args[Number(n) - 1]));
+    return renderBlocks(fill(def.begin) + body + fill(def.end), ctx);
+  }
+
   function renderEnvironment(env, inner, ctx) {
+    if (ctx && ctx.envMap && ctx.envMap[env]) return renderCustomEnvironment(ctx.envMap[env], inner, ctx);
     if (MATH_ENVS.has(env)) {
       if (env === 'math') return renderMath(inner, false, ctx);
 
@@ -2535,7 +2687,7 @@ Close with the main takeaway.
         break;
     }
 
-    if (THEOREM_ENVS[env]) return renderTheorem(env, inner, ctx);
+    if (ctx && ctx.theorems && ctx.theorems[env]) return renderTheorem(env, inner, ctx);
     return renderBlocks(inner, ctx);
   }
 
@@ -2616,17 +2768,17 @@ Close with the main takeaway.
     const macros = {};
     const defs = [];
     const text = String(src || '');
-    const defRe = /\\(newcommand|renewcommand|providecommand)\*?\s*\{?\s*\\([A-Za-z]+)\s*\}?\s*(?:\[(\d)\])?\s*\{/g;
+    const defRe = /\\(newcommand|renewcommand|providecommand)\*?\s*\{?\s*\\([A-Za-z]+)\s*\}?\s*(?:\[(\d)\])?(?:\s*\[([^\]]*)\])?\s*\{/g;
     let m;
-    const remember = (name, args, body) => {
+    const remember = (name, args, body, opt) => {
       macros['\\' + name] = body;
-      defs.push({ name, args, body, math: mathMacroBody(body) });
+      defs.push({ name, args, body, opt: opt === undefined ? null : opt, math: mathMacroBody(body) });
     };
     while ((m = defRe.exec(text)) !== null) {
       const open = m.index + m[0].length - 1;
       const close = matchBrace(text, open);
       if (close < 0) continue;
-      remember(m[2], m[3] ? Number(m[3]) : 0, text.slice(open + 1, close));
+      remember(m[2], m[3] ? Number(m[3]) : 0, text.slice(open + 1, close), m[4]);
     }
     const defPlain = /\\def\s*\\([A-Za-z]+)((?:#\d)+)?\s*\{/g;
     while ((m = defPlain.exec(text)) !== null) {
@@ -2639,7 +2791,27 @@ Close with the main takeaway.
     while ((m = opRe.exec(text)) !== null) {
       remember(m[1], 0, '\\operatorname{' + m[2] + '}');
     }
-    return { macros, defs };
+
+    const envs = {};
+    const envRe = /\\newenvironment\*?\s*\{([A-Za-z*]+)\}\s*(?:\[(\d)\])?\s*(?:\[([^\]]*)\])?\s*\{/g;
+    while ((m = envRe.exec(text)) !== null) {
+      const open = m.index + m[0].length - 1;
+      const close = matchBrace(text, open);
+      if (close < 0) continue;
+      const next = /^\s*\{/.exec(text.slice(close + 1));
+      if (!next) continue;
+      const endOpen = close + 1 + next[0].length - 1;
+      const endClose = matchBrace(text, endOpen);
+      if (endClose < 0) continue;
+      envs[m[1]] = {
+        name: m[1],
+        args: m[2] ? Number(m[2]) : 0,
+        opt: m[3] === undefined ? null : m[3],
+        begin: text.slice(open + 1, close),
+        end: text.slice(endOpen + 1, endClose)
+      };
+    }
+    return { macros, defs, envs };
   }
 
   /* Blank out macro definitions so document checks do not treat their bodies
@@ -2647,9 +2819,10 @@ Close with the main takeaway.
   function maskMacroDefs(src) {
     const text = String(src || '');
     const patterns = [
-      /\\(?:newcommand|renewcommand|providecommand)\*?\s*\{?\s*\\[A-Za-z]+\s*\}?\s*(?:\[\d\])?\s*\{/g,
+      /\\(?:newcommand|renewcommand|providecommand)\*?\s*\{?\s*\\[A-Za-z]+\s*\}?\s*(?:\[\d\])?\s*(?:\[[^\]]*\])?\s*\{/g,
       /\\def\s*\\[A-Za-z]+(?:#\d)*\s*\{/g,
-      /\\DeclareMathOperator\*?\s*\{\\[A-Za-z]+\}\s*\{/g
+      /\\DeclareMathOperator\*?\s*\{\\[A-Za-z]+\}\s*\{/g,
+      /\\newenvironment\*?\s*\{[A-Za-z*]+\}\s*(?:\[\d\])?\s*(?:\[[^\]]*\])?\s*\{/g
     ];
     let out = text;
     patterns.forEach((re) => {
@@ -2659,8 +2832,17 @@ Close with the main takeaway.
         const open = m.index + m[0].length - 1;
         const close = matchBrace(text, open);
         if (close < 0) continue;
-        const blank = text.slice(m.index, close + 1).replace(/[^\n]/g, ' ');
-        out = out.slice(0, m.index) + blank + out.slice(close + 1);
+        let end = close + 1;
+        if (m[0].indexOf('\\newenvironment') === 0) {
+          const next = /^\s*\{/.exec(text.slice(close + 1));
+          if (next) {
+            const endOpen = close + 1 + next[0].length - 1;
+            const endClose = matchBrace(text, endOpen);
+            if (endClose > 0) end = endClose + 1;
+          }
+        }
+        const blank = text.slice(m.index, end).replace(/[^\n]/g, ' ');
+        out = out.slice(0, m.index) + blank + out.slice(end);
       }
     });
     return out;
@@ -2687,6 +2869,8 @@ Close with the main takeaway.
     let lastHeading = null;
     const envStack = [];
     const numbered = new Set(['equation', 'align', 'alignat', 'flalign', 'eqnarray', 'gather', 'multline']);
+    const theoremDefs = collectTheoremDefs(expanded);
+    const theoremCounters = {};
 
     const sectionDisplay = () => [section.chapter, section.section, section.subsection, section.subsubsection]
       .filter((value) => value > 0).join('.');
@@ -2723,6 +2907,19 @@ Close with the main takeaway.
 
       events.forEach((event) => {
         if (event.type === 'begin') {
+          const theoremDef = theoremDefs[event.env];
+          if (theoremDef) {
+            const scope = theoremDef.within === 'section' ? sectionDisplay() : '';
+            const key = theoremDef.counter + '@' + scope;
+            theoremCounters[key] = (theoremCounters[key] || 0) + 1;
+            envStack.push({
+              env: event.env,
+              kind: 'theorem',
+              kindLabel: theoremDef.name,
+              number: theoremDef.numbered ? (scope ? scope + '.' : '') + theoremCounters[key] : ''
+            });
+            return;
+          }
           /* Only math and float environments affect label numbering. Ignore
              the outer document, lists and theorem wrappers here. */
           if (!(MATH_ENVS.has(event.env) || event.env.indexOf('figure') === 0 || event.env.indexOf('table') === 0)) {
@@ -2760,7 +2957,7 @@ Close with the main takeaway.
           if (current) {
             context = current.env;
             if (current.number) {
-              kind = current.kind === 'figure' || current.kind === 'table' ? current.kind : 'equation';
+              kind = ['figure', 'table', 'theorem'].indexOf(current.kind) >= 0 ? current.kind : 'equation';
               number = current.number;
             } else if (MATH_ENVS.has(current.env)) {
               kind = 'equation';
@@ -2768,7 +2965,14 @@ Close with the main takeaway.
           } else if (lastHeading) {
             number = lastHeading.number;
           }
-          const entry = { name: event.name, line: lineIndex + 1, kind, number, context };
+          const entry = {
+            name: event.name,
+            line: lineIndex + 1,
+            kind,
+            number,
+            context,
+            kindLabel: current && current.kindLabel ? current.kindLabel : ''
+          };
           labels.push(entry);
           if (!labelMap.has(event.name)) labelMap.set(event.name, entry);
           return;
@@ -3046,6 +3250,10 @@ Close with the main takeaway.
     const macroSet = collectUserMacros(src);
     ctx.macros = macroSet.macros;
     ctx.macroMap = new Map(macroSet.defs.map((def) => [def.name, def]));
+    ctx.envMap = macroSet.envs || {};
+    ctx.theorems = collectTheoremDefs(src);
+    ctx.theoremCounters = {};
+    ctx.images = projectImages();
     ctx.references = parseReferenceIndex(src, ctx.macroMap);
     ctx.citations = parseCitations(src);
     ctx.bibliography = Array.from(ctx.citations.entryMap.values());
@@ -3060,7 +3268,7 @@ Close with the main takeaway.
       const endIdx = after.search(/\\end\s*\{document\}/);
       body = endIdx >= 0 ? after.slice(0, endIdx) : after;
     } else {
-      const preambleLine = /^\s*\\(documentclass|usepackage|RequirePackage|newcommand|renewcommand|providecommand|DeclareMathOperator|DeclareRobustCommand|def|let|title|author|date|geometry|pagestyle|thispagestyle|setlength|addtolength|setcounter|bibliography|bibliographystyle|graphicspath|hypersetup|newtheorem)\b/;
+      const preambleLine = /^\s*\\(documentclass|usepackage|RequirePackage|newcommand|renewcommand|providecommand|newenvironment|DeclareMathOperator|DeclareRobustCommand|def|let|title|author|date|geometry|pagestyle|thispagestyle|setlength|addtolength|setcounter|bibliography|bibliographystyle|graphicspath|hypersetup|newtheorem)\b/;
       const lines = body.split('\n');
       const pre = [];
       const rest = [];
@@ -4458,6 +4666,108 @@ Close with the main takeaway.
   }
 
   /* ------------------------------------------------------------------ *
+   *  Project images (data URLs kept inside the project record)
+   * ------------------------------------------------------------------ */
+  function imageBytes(images) {
+    return Object.keys(images).reduce((sum, key) => sum + Math.round(images[key].length * 0.75), 0);
+  }
+
+  function openImages() {
+    renderImageList();
+    openModal('#imageModal');
+  }
+
+  function renderImageList() {
+    const host = $('#imageList');
+    if (!host) return;
+    const images = projectImages();
+    const keys = Object.keys(images);
+    const meta = $('#imageMeta');
+    if (meta) {
+      const used = imageBytes(images);
+      meta.textContent = keys.length + ' image' + (keys.length === 1 ? '' : 's') +
+        ' · ' + (used < 1024 * 1024
+          ? Math.round(used / 1024) + ' KB'
+          : (used / 1024 / 1024).toFixed(1) + ' MB') +
+        ' of ' + (IMAGE_TOTAL_BYTES / 1024 / 1024) + ' MB used';
+    }
+    if (!keys.length) {
+      host.innerHTML = '<div class="panel-empty"><i data-lucide="image"></i><strong>No images attached</strong><span>Attach a PNG, JPEG, GIF or WebP, then reference it with \\includegraphics{filename}.</span></div>';
+      refreshIcons();
+      return;
+    }
+    host.innerHTML = keys.map((key) =>
+      '<article class="image-card">' +
+      '<img src="' + images[key] + '" alt="' + escapeHtml(key) + '" />' +
+      '<div class="image-card-meta"><code>' + escapeHtml(key) + '</code>' +
+      '<span>' + Math.round(images[key].length * 0.75 / 1024) + ' KB</span></div>' +
+      '<div class="image-card-actions">' +
+      '<button class="btn btn-ghost btn-xs" type="button" data-image-copy="' + escapeHtml(key) + '">Copy name</button>' +
+      '<button class="btn btn-ghost btn-xs" type="button" data-image-delete="' + escapeHtml(key) + '">Remove</button>' +
+      '</div></article>').join('');
+    refreshIcons();
+  }
+
+  async function attachImageFiles(files) {
+    const list = Array.from(files || []);
+    if (!list.length) return;
+    const images = projectImages();
+    let bytes = imageBytes(images);
+    let added = 0;
+    for (const file of list) {
+      if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) {
+        toast(file.name + ' is not a PNG, JPEG, GIF or WebP.', 'warn');
+        continue;
+      }
+      if (file.size > IMAGE_MAX_BYTES) {
+        toast(file.name + ' is larger than 1.5 MB.', 'warn');
+        continue;
+      }
+      if (Object.keys(images).length >= IMAGE_KEY_LIMIT) {
+        toast('A project holds up to ' + IMAGE_KEY_LIMIT + ' images.', 'warn');
+        break;
+      }
+      if (bytes + file.size > IMAGE_TOTAL_BYTES) {
+        toast('Image storage is full (4 MB per project).', 'warn');
+        break;
+      }
+      const dataUrl = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
+      });
+      if (!IMAGE_DATA_URL.test(dataUrl)) {
+        toast('Could not read ' + file.name + '.', 'error');
+        continue;
+      }
+      const key = String(file.name || 'image').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 120);
+      images[key] = dataUrl;
+      bytes += file.size;
+      added += 1;
+    }
+    if (added) {
+      activeProject().images = images;
+      persist();
+      renderImageList();
+      renderNow({ manual: true });
+      toast(added + ' image' + (added === 1 ? '' : 's') + ' attached', 'success');
+    } else {
+      renderImageList();
+    }
+  }
+
+  function deleteProjectImage(key) {
+    const images = projectImages();
+    if (!images[key]) return;
+    delete images[key];
+    persist();
+    renderImageList();
+    renderNow({ manual: true });
+    toast('Removed ' + key, 'info');
+  }
+
+  /* ------------------------------------------------------------------ *
    *  Natural text → LaTeX converter
    * ------------------------------------------------------------------ */
   const SYMBOL_WORDS = [
@@ -5667,18 +5977,90 @@ Close with the main takeaway.
     if (payload.content.length > 1000000) return null;
     return {
       name: typeof payload.name === 'string' ? payload.name.slice(0, 80) : '',
-      content: payload.content
+      content: payload.content,
+      images: sanitizeImages(payload.images),
+      bib: typeof payload.bib === 'string' ? payload.bib.slice(0, 200000) : '',
+      snippets: Array.isArray(payload.snippets) ? payload.snippets.slice(0, 60) : []
     };
+  }
+
+  /* The bibliography and snippet library are browser-wide, so backups and
+     share links carry them along and merge anything the receiver lacks. */
+  function mergeBibText(incoming) {
+    const text = String(incoming || '').trim();
+    if (!text) return false;
+    const existing = readBibText();
+    if (!existing.trim()) {
+      writeBibText(text);
+      return true;
+    }
+    const known = new Set(parseBibEntries(existing).map((entry) => entry.key));
+    let added = '';
+    const re = /@([A-Za-z]+)\s*([{(])/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const open = m.index + m[0].length - 1;
+      const close = bibBlockEnd(text, open);
+      if (close < 0) continue;
+      const key = text.slice(open + 1, close).split(',')[0].trim();
+      if (key && !known.has(key)) {
+        known.add(key);
+        added += text.slice(m.index, close + 1) + '\n';
+      }
+      re.lastIndex = close + 1;
+    }
+    if (!added) return false;
+    writeBibText((existing.trim() + '\n\n' + added).slice(0, 200000));
+    return true;
+  }
+
+  function mergeSnippets(incoming) {
+    if (!Array.isArray(incoming) || !incoming.length) return 0;
+    const items = readSnippets();
+    const seen = new Set(items.map((item) => item.name + '\u0000' + item.body));
+    let added = 0;
+    incoming.slice(0, SNIPPET_LIMIT).forEach((raw) => {
+      if (!raw || !raw.name || !raw.body) return;
+      const signature = String(raw.name) + '\u0000' + String(raw.body);
+      if (seen.has(signature)) return;
+      seen.add(signature);
+      items.push({
+        id: 's_' + Math.random().toString(36).slice(2, 9),
+        name: String(raw.name).slice(0, 60),
+        trigger: normalizeSnippetTrigger(raw.trigger, raw.name),
+        body: String(raw.body).slice(0, 4000),
+        kind: raw.kind === 'macro' ? 'macro' : 'snippet',
+        updatedAt: Date.now()
+      });
+      added += 1;
+    });
+    if (added) writeSnippets(items);
+    return added;
   }
 
   async function shareDocument() {
     if (!cm) return;
     saveNow();
     const project = activeProject();
+    const images = {};
+    let imageChars = 0;
+    let droppedImages = 0;
+    Object.keys(projectImages()).forEach((key) => {
+      const url = projectImages()[key];
+      if (imageChars + url.length <= IMAGE_SHARE_BYTES) {
+        images[key] = url;
+        imageChars += url.length;
+      } else {
+        droppedImages += 1;
+      }
+    });
     const encoded = await encodeSharePayload({
-      v: 1,
+      v: 2,
       name: projectFileStem(project),
-      content: cm.getValue()
+      content: cm.getValue(),
+      images,
+      bib: readBibText().slice(0, 60000),
+      snippets: readSnippets().slice(0, 40)
     });
     const url = location.origin + location.pathname + '#share=' + encoded;
     const ok = await copyText(url);
@@ -5686,10 +6068,13 @@ Close with the main takeaway.
       window.prompt('Copy this share link:', url);
       return;
     }
-    if (url.length > 50000) {
+    if (droppedImages) {
+      toast('Share link copied without ' + droppedImages + ' large image' +
+        (droppedImages === 1 ? '' : 's') + ' — use a backup to move those.', 'warn');
+    } else if (url.length > 50000) {
       toast('Share link copied — it is long, so .tex download may be better for very large documents.', 'warn');
     } else {
-      toast('Share link copied — the document is inside the link.', 'success');
+      toast('Share link copied — the document and its library are inside the link.', 'success');
     }
   }
 
@@ -5703,7 +6088,14 @@ Close with the main takeaway.
         return;
       }
       const name = (payload.name || 'Shared Document') + ' (shared)';
-      const project = { id: uid(), name, content: payload.content, updatedAt: Date.now() };
+      const project = {
+        id: uid(),
+        name,
+        content: payload.content,
+        images: sanitizeImages(payload.images),
+        updatedAt: Date.now()
+      };
+      const libraryRestored = mergeBibText(payload.bib) || mergeSnippets(payload.snippets) > 0;
       state.projects.unshift(project);
       state.activeId = project.id;
       persist();
@@ -5715,7 +6107,9 @@ Close with the main takeaway.
       }
       updateTabName();
       renderNow();
-      toast('Opened shared document', 'success');
+      toast(libraryRestored
+        ? 'Opened shared document with its bibliography and snippets'
+        : 'Opened shared document', 'success');
     } catch (_) {
       history.replaceState(null, '', location.pathname + location.search);
       toast('Could not open that share link.', 'error');
@@ -5755,6 +6149,15 @@ Close with the main takeaway.
     if (label) label.textContent = 'Rendering…';
 
     const stage = $('#pdfStage');
+    let timedOut = false;
+    /* html2canvas can stall on very large documents; never leave the button
+       stuck on “Rendering…”. After 30 s we offer the print dialog, which still
+       produces a PDF through “Save as PDF”. */
+    const watchdog = setTimeout(() => {
+      timedOut = true;
+      toast('PDF rendering is slow here — opening the print dialog. Choose “Save as PDF”.', 'warn');
+      window.print();
+    }, 30000);
     try {
       const result = compileDocument(cm.getValue());
       stage.innerHTML = '<article class="paper">' + (result.html || '') + '</article>';
@@ -5770,7 +6173,7 @@ Close with the main takeaway.
           filename: projectFileStem(activeProject()) + '.pdf',
           image: { type: 'jpeg', quality: 0.96 },
           html2canvas: {
-            scale: 1.6,
+            scale: 1.25,
             backgroundColor: '#ffffff',
             useCORS: true,
             logging: false,
@@ -5784,12 +6187,15 @@ Close with the main takeaway.
         .from(stage.firstElementChild)
         .save();
 
-      toast('PDF exported', 'success');
+      if (!timedOut) toast('PDF exported', 'success');
     } catch (err) {
       console.error('SciDocs: PDF export failed', err);
-      toast('PDF export failed — opening the print dialog instead.', 'warn');
-      window.print();
+      if (!timedOut) {
+        toast('PDF export failed — opening the print dialog instead.', 'warn');
+        window.print();
+      }
     } finally {
+      clearTimeout(watchdog);
       stage.innerHTML = '';
       if (button) button.disabled = false;
       if (label) label.textContent = original;
@@ -5856,6 +6262,20 @@ Close with the main takeaway.
     $('#mathExportBtn').addEventListener('click', openMathExport);
     $('#problemsBtn').addEventListener('click', () => openProblems('problems'));
     $('#snippetsBtn').addEventListener('click', openSnippets);
+    $('#imagesBtn').addEventListener('click', openImages);
+    $('#imageAdd').addEventListener('click', () => {
+      const input = $('#imageFile');
+      if (input) { input.value = ''; input.click(); }
+    });
+    $('#imageFile').addEventListener('change', (event) => attachImageFiles(event.target.files));
+    $('#imageList').addEventListener('click', (event) => {
+      const remove = event.target.closest('[data-image-delete]');
+      if (remove) { deleteProjectImage(remove.dataset.imageDelete); return; }
+      const copy = event.target.closest('[data-image-copy]');
+      if (!copy) return;
+      copyText(copy.dataset.imageCopy).then((ok) =>
+        toast(ok ? 'Image name copied' : 'Could not copy the name', ok ? 'success' : 'warn'));
+    });
     $('#problemsTabs').addEventListener('click', (event) => {
       const tab = event.target.closest('[data-problems-tab]');
       if (!tab) return;

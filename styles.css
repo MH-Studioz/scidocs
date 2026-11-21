@@ -1543,6 +1543,67 @@ body.sidebar-collapsed .sidebar {
   font-size: 11.5px;
 }
 
+.doc-figure-media {
+  display: flex;
+  justify-content: center;
+}
+
+.doc-figure-media img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+.doc-figure-note {
+  font-size: 11px;
+  color: #94A3B8;
+}
+
+.image-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.image-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  background: #FFFFFF;
+}
+
+.image-card img {
+  width: 100%;
+  height: 96px;
+  object-fit: contain;
+  border-radius: 4px;
+  background: #F8FAFC;
+}
+
+.image-card-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11px;
+  color: #475569;
+}
+
+.image-card-meta code {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.image-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .doc-figure figcaption {
   margin-top: 7px;
   text-align: center;

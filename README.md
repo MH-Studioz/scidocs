@@ -70,10 +70,18 @@ Open **Snippets** in the top bar to save reusable LaTeX fragments. Give each sni
 
 - Type the trigger in the editor and press **Ctrl/Cmd + Space** to insert the snippet from autocomplete.
 - **Insert** places the snippet at the current cursor; **Use editor selection** fills the body from the selected text.
-- The delete button removes a snippet from this browser. Snippets are not uploaded or included in project backups.
+- The delete button removes a snippet from this browser. Snippets are never uploaded; backups and share links carry the library so another browser can pick it up.
 - A body can mark several placeholders: `[[CURSOR]]` is the first stop, `[[CURSOR:2]]`, `[[CURSOR:3]]`… follow. After inserting, **Tab** and **Shift-Tab** step through them; clicking in the editor ends the walk. The toolbar’s fraction and binomial inserts use two stops.
 
-Document macros declared with `\newcommand`, `\def` or `\DeclareMathOperator` are expanded in math and in prose, and show up in command autocomplete together with your saved snippet triggers. `\def` parameters such as `\def\pair#1#2{\langle #1, #2\rangle}` are supported. A body built only from math commands (`\newcommand{\R}{\mathbb{R}}`, `\def\pair#1#2{\langle #1, #2\rangle}`) is rendered as inline math when the macro is used in prose. Optional-argument defaults (`\newcommand{\x}[1][default]{…}`) are not supported.
+Document macros declared with `\newcommand`, `\def` or `\DeclareMathOperator` are expanded in math and in prose, and show up in command autocomplete together with your saved snippet triggers. `\def` parameters such as `\def\pair#1#2{\langle #1, #2\rangle}` are supported. A body built only from math commands (`\newcommand{\R}{\mathbb{R}}`, `\def\pair#1#2{\langle #1, #2\rangle}`) is rendered as inline math when the macro is used in prose. Optional-argument defaults are supported (`\newcommand{\norm}[1][x]{\lVert #1\rVert}`; `\norm`, `\norm{y}` and `\norm[y]` all work). `\newenvironment{name}[n][default]{begin}{end}` renders its begin code, the body and its end code, with `#1…` substituted, and `\newtheorem` names and counters drive theorem numbering.
+
+## Figures, tables and images
+
+`\begin{figure}` and `\begin{table}` render with numbered captions ("Figure 1: …"), and `\ref`, `\eqref` and `\autoref` resolve to those numbers; `\autoref` names the kind ("Figure 1", "Table 2", "Theorem 3").
+
+`\includegraphics[width=0.6\textwidth]{plot.png}` shows the real image when the file is attached to the project. Open **Images** in the top bar to attach PNG, JPEG, GIF or WebP files (up to 12 images, 1.5 MB each and 4 MB per project) or remove them. Images are stored as data URLs inside the project record, so they travel with backups, share links (up to 250 KB of images per link) and the browser workspace. A missing file shows a filename chip marked "not attached" instead of a broken image.
+
+Theorem blocks are numbered per kind and follow `\newtheorem`, including a shared counter (`\newtheorem{lem}[thm]{Lemma}`) and numbering within sections (`\newtheorem{claim}{Claim}[section]`); `proof` stays unnumbered.
 
 ## Copy and export math
 
@@ -164,13 +172,13 @@ If the model returns invalid KaTeX, SciDocs AI automatically sends one correctio
 - **Info** explains what the browser preview supports and where a full TeX compile is needed.
 - **Guide** explains the workflow in the app; this README is the longer reference.
 - The inline/display math toolbar buttons do not add `$` delimiters when the cursor is already inside math; they show a short notice instead. Empty wraps use a valid `$ $` or `$$ $$` pair, and boundary insertions add separation so a new `$$` is not formed accidentally.
-- Projects autosave to `IndexedDB` (with a `localStorage` mirror); PDF export uses the rendered preview.
+- Projects autosave to `IndexedDB` (with a `localStorage` mirror); PDF export rasterizes the compiled document, and if the renderer stalls for 30 seconds it opens the print dialog instead so you can still choose “Save as PDF”.
 
 ## History and backups
 
 Open **History** in the project toolbar. SciDocs keeps up to 20 snapshots per project in IndexedDB: one when you pause after editing (at most every five minutes), one when you switch projects or replace the editor with a template or import, and any manual snapshots you create. Each snapshot can be restored or downloaded as `.tex`.
 
-**Export backup** downloads a JSON file containing every project. **Import backup** adds the projects from a JSON file without deleting current projects; duplicate names receive a numeric suffix. Browsers can clear site storage, so keep a backup of important work.
+**Export backup** downloads a JSON file containing every project — source, attached images, the BibTeX library and your saved snippets. **Import backup** adds the projects from a JSON file without deleting current projects; duplicate names receive a numeric suffix. Bibliography entries are merged by key and snippets by name and body, so an import never overwrites what you already have. Browsers can clear site storage, so keep a backup of important work.
 
 ## Offline use
 
@@ -182,7 +190,7 @@ The live preview is a fast browser renderer, not a full TeX distribution. Core m
 
 ## Share links
 
-**Share** encodes the current project name and LaTeX source into the URL fragment (after `#share=`) and copies the link. Nothing is uploaded: the recipient's browser decodes the document locally and opens it as a new project named `… (shared)`, leaving their existing projects alone.
+**Share** encodes the current project name, its LaTeX source, attached images (up to 250 KB), the BibTeX library and your snippets into the URL fragment (after `#share=`) and copies the link. Nothing is uploaded: the recipient's browser decodes it locally, opens the document as a new project named `… (shared)`, and merges any bibliography entries and snippets it does not already have. Very large images are left out of the link; a backup moves those.
 
 - The fragment is compressed when the browser supports `CompressionStream`, with a plain Base64 fallback.
 - Very large documents produce very long URLs; use **.tex** download for those.

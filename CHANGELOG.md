@@ -4,12 +4,16 @@
 
 ### Added
 
+- **Attached images.** `\includegraphics{file}` now renders the real image when it is attached to the project. The new **Images** dialog attaches PNG, JPEG, GIF or WebP files (12 per project, 1.5 MB each, 4 MB total), stores them as data URLs in the project record and honours `width=0.6\textwidth`-style options.
+- **Theorem numbering.** Theorem-like blocks are numbered (`Theorem 1`, `Lemma 2`, …), including `\newtheorem` names, shared counters and `[section]` numbering; `\autoref` names the kind.
+- **References and library travel with the document.** Backups and share links now carry the BibTeX library, saved snippets and project images, and merge them on import instead of overwriting.
 - **Snippet tab stops.** A snippet body can mark several placeholders with `[[CURSOR]]`, `[[CURSOR:2]]`, `[[CURSOR:3]]`… After inserting, **Tab** and **Shift-Tab** walk the stops and clicking in the editor ends the walk. The fraction and binomial toolbar inserts now use two stops.
-- **Document macros in prose.** Macros declared with `\newcommand`, `\def` (including parameters) or `\DeclareMathOperator` are expanded in text as well as math, and user-defined macros appear in `\` autocomplete.
+- **Document macros in prose.** Macros declared with `\newcommand`, `\def` (including parameters) or `\DeclareMathOperator` are expanded in text as well as math, and user-defined macros appear in `\` autocomplete. Optional-argument defaults and `\newenvironment` are supported.
 
 ### Fixed
 
 - `\def\name#1#2{…}` definitions were not collected before; parameter text is now parsed, so parameterised `\def` macros expand.
+- PDF export could stay stuck on “Rendering…” when the canvas renderer stalled. It now has a 30-second watchdog, a smaller render scale and a print-dialog fallback.
 
 ## [1.2.1] - 2026-11-20
 

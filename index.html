@@ -103,6 +103,9 @@
       <button class="btn btn-ghost btn-icon-only" type="button" id="bibBtn" title="Bibliography and citations" aria-label="Bibliography and citations">
         <i data-lucide="book-marked"></i>
       </button>
+      <button class="btn btn-ghost btn-icon-only" type="button" id="imagesBtn" title="Project images" aria-label="Project images">
+        <i data-lucide="image"></i>
+      </button>
       <button class="btn btn-ghost btn-icon-only" type="button" id="guideBtn" title="SciDocs user guide" aria-label="SciDocs user guide">
         <i data-lucide="book-open"></i>
       </button>
@@ -425,6 +428,32 @@ $$\sigma * 8$$     → display math</pre>
       </div>
       <div class="modal-foot">
         <p class="hint">Type the trigger in the editor, then press Ctrl/Cmd + Space to autocomplete. In a body, <code>[[CURSOR]]</code> marks the first tab stop and <code>[[CURSOR:2]]</code> the next; Tab and Shift-Tab step through them after inserting.</p>
+        <div class="modal-actions"><button class="btn btn-ghost" type="button" data-close-modal>Close</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== IMAGE MODAL ============================== -->
+  <div class="modal-backdrop" id="imageModal" hidden>
+    <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="imageTitle">
+      <div class="modal-head">
+        <span class="modal-icon"><i data-lucide="image"></i></span>
+        <div class="modal-title">
+          <h2 id="imageTitle">Project images</h2>
+          <p>Attached to this project and kept in this browser.</p>
+        </div>
+        <button class="icon-btn" type="button" data-close-modal aria-label="Close"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="snippet-form-actions">
+          <input type="file" id="imageFile" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden />
+          <button class="btn btn-primary btn-xs" type="button" id="imageAdd">Attach image</button>
+          <span class="hint" id="imageMeta">0 images</span>
+        </div>
+        <div class="image-list" id="imageList"></div>
+      </div>
+      <div class="modal-foot">
+        <p class="hint">Use <code>\includegraphics[width=0.6\textwidth]{filename}</code> in a figure. Up to 12 images, 1.5 MB each and 4 MB per project.</p>
         <div class="modal-actions"><button class="btn btn-ghost" type="button" data-close-modal>Close</button></div>
       </div>
     </div>
