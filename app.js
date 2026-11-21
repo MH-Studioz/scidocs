@@ -2141,12 +2141,21 @@ Close with the main takeaway.
     let i = 0;
     let inMath = false;
     while (i < text.length) {
-      if (text[i] === '$') { inMath = !inMath; out += text[i]; i += 1; continue; }
+      if (text[i] === '$') {
+        if (text[i + 1] === '$') { inMath = !inMath; out += '$$'; i += 2; continue; }
+        inMath = !inMath;
+        out += text[i];
+        i += 1;
+        continue;
+      }
       if (text[i] !== '\\') { out += text[i]; i += 1; continue; }
       const m = /^\\([A-Za-z]+)\*?/.exec(text.slice(i, i + 40));
       if (!m) {
+        const next = text[i + 1];
+        if (next === '[' || next === '(') inMath = true;
+        else if (next === ']' || next === ')') inMath = false;
         out += text[i];
-        if (text[i + 1] && '$%&#_{}'.indexOf(text[i + 1]) >= 0) { out += text[i + 1]; i += 2; } else { i += 1; }
+        if (next && '$%&#_{}'.indexOf(next) >= 0) { out += next; i += 2; } else { i += 1; }
         continue;
       }
       const def = defs.get(m[1]);

@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.1] - 2026-11-21
+
+### Fixed
+
+- A macro used inside `$$…$$` was expanded as if it were prose, so a math-only body was wrapped a second time and leaked dollar signs. Display delimiters, `\[…\]` and `\(…\)` now switch math mode once, and the wrapped case renders as display math.
+
 ## [1.3.0] - 2026-11-21
 
 ### Added
