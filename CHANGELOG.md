@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.5] - 2026-11-22
+
+### Fixed
+
+- **A stray `\bibitem` no longer prints as raw LaTeX in the preview.** The command was already denied a reference number, but it still reached the page as literal `\bibitem{key}` text. `\bibitem` and `\newblock` are now dropped wherever they would render as prose, so the following words read normally while the warning still points at the misplaced command.
+
 ## [1.3.4] - 2026-11-22
 
 ### Fixed

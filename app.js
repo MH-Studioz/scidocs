@@ -2264,7 +2264,11 @@ Close with the main takeaway.
           escapeHtml(entry && entry.number ? entry.number : '??') + '</span>');
       },
       label: () => hold(''),
-      index: () => hold('')
+      index: () => hold(''),
+      /* Bibliography markers never print as text. Inside a thebibliography
+         block they are consumed by its renderer; a stray one would otherwise
+         land in the preview as raw LaTeX (the diagnostics flag it). */
+      bibitem: () => hold('')
     };
 
     let text = processCommands(String(raw), map);
@@ -2281,7 +2285,7 @@ Close with the main takeaway.
     text = text.replace(/\\female(?![A-Za-z])/g, () => hold('♀'));
 
     text = text.replace(
-      /\\(noindent|centering|raggedright|raggedleft|hfill|vfill|bigskip|medskip|smallskip|newpage|clearpage|pagebreak|linebreak|nopagebreak|break|small|footnotesize|scriptsize|normalsize|large|Large|LARGE|huge|Huge|bfseries|itshape|slshape|scshape|mdseries|upshape|rmfamily|sffamily|ttfamily|protect|relax)\b/g,
+      /\\(noindent|centering|raggedright|raggedleft|hfill|vfill|bigskip|medskip|smallskip|newpage|clearpage|pagebreak|linebreak|nopagebreak|break|small|footnotesize|scriptsize|normalsize|large|Large|LARGE|huge|Huge|bfseries|itshape|slshape|scshape|mdseries|upshape|rmfamily|sffamily|ttfamily|protect|relax|newblock)\b/g,
       ''
     );
     text = text.replace(
