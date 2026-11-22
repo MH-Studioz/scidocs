@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.4] - 2026-11-22
+
+### Fixed
+
+- **A duplicated `\bibitem` key no longer earns a second reference number.** A document that declared the same key twice listed both entries, so the second row looked like reference 2 while `\cite` printed 1. Only the first `\bibitem` for a key is kept now, and the References list and the citation numbers agree again.
+- **A stray `\bibitem` outside a `thebibliography` block is reported instead of becoming a reference.** The parser used to fall back to the whole document when it found no environment, so a lone `\bibitem` swallowed the text after it and took a reference number. Entries are now read only from inside a `thebibliography` block, and a `\bibitem` anywhere else raises a warning that points at the line; a citation that relied on it reports a missing entry.
+
 ## [1.3.3] - 2026-11-22
 
 ### Fixed

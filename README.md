@@ -2,7 +2,7 @@
 
 https://mh-studioz.github.io/scidocs/
 
-v1.3.3
+v1.3.4
 
 [Release notes](CHANGELOG.md)
 

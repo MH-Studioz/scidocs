@@ -3164,12 +3164,18 @@ Close with the main takeaway.
      \begin{thebibliography}{1} \bibitem{key} text … \end{thebibliography}.
      Those entries are plain LaTeX and take part in citation numbering just like
      library entries, so \cite resolves without any imported .bib file. */
-  function parseBibItems(text) {
+  function parseBibItems(text, insideEnv) {
     const src = String(text || '');
-    const open = /\\begin\s*\{thebibliography\}(?:\s*\{[^}]*\})?/.exec(src);
-    let inner = open ? src.slice(open.index + open[0].length) : src;
-    const close = inner.indexOf('\\end{thebibliography}');
-    if (close >= 0) inner = inner.slice(0, close);
+    let inner = src;
+    if (!insideEnv) {
+      const open = /\\begin\s*\{thebibliography\}(?:\s*\{[^}]*\})?/.exec(src);
+      /* A \bibitem outside a thebibliography block is not a reference in
+         LaTeX; it is reported as a problem instead of earning a number. */
+      if (!open) return [];
+      inner = src.slice(open.index + open[0].length);
+      const close = inner.indexOf('\\end{thebibliography}');
+      if (close >= 0) inner = inner.slice(0, close);
+    }
     const items = [];
     const re = /\\bibitem\s*(?:\[([^\]]*)\])?\s*\{([^}]*)\}/g;
     let match;
@@ -3187,8 +3193,13 @@ Close with the main takeaway.
       current.text = inner.slice(cursor);
       items.push(current);
     }
+    const seenKeys = new Set();
     return items
-      .filter((item) => item.key)
+      .filter((item) => {
+        if (!item.key || seenKeys.has(item.key)) return false;
+        seenKeys.add(item.key);
+        return true;
+      })
       .map((item) => ({
         key: item.key,
         label: item.label,
@@ -3271,7 +3282,7 @@ Close with the main takeaway.
      block the .bib path appends. Entries keep their LaTeX, so emphasis and
      formulas inside a reference survive. */
   function renderBibliography(inner, ctx) {
-    const items = parseBibItems(inner);
+    const items = parseBibItems(inner, true);
     if (!items.length) return '';
     const rows = items.map((item) =>
       '<li class="doc-bib-item" id="bib:' + escapeHtml(item.key) + '">' +
@@ -3541,6 +3552,26 @@ Close with the main takeaway.
         fix: { kind: 'strip-dollars', line: item.line }
       });
     });
+
+    /* \bibitem only counts inside a thebibliography block. */
+    const bibRanges = [];
+    const bibBegin = /\\begin\s*\{thebibliography\}/g;
+    let bibMatch;
+    while ((bibMatch = bibBegin.exec(text)) !== null) {
+      const end = text.indexOf('\\end{thebibliography}', bibMatch.index);
+      bibRanges.push([bibMatch.index, end >= 0 ? end + '\\end{thebibliography}'.length : text.length]);
+    }
+    const strayBibItem = /\\bibitem\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}/g;
+    let strayMatch;
+    while ((strayMatch = strayBibItem.exec(text)) !== null) {
+      if (bibRanges.some((range) => strayMatch.index >= range[0] && strayMatch.index < range[1])) continue;
+      warnings.push({
+        msg: '\\bibitem{' + strayMatch[1].trim() + '} is outside a thebibliography block.',
+        hint: 'Wrap the entries in \\begin{thebibliography}{9} … \\end{thebibliography}; a stray \\bibitem is not a reference.',
+        line: lineOf(text, strayMatch.index)
+      });
+      break;
+    }
 
     return { errors, warnings };
   }
