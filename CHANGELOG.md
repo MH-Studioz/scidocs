@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.3] - 2026-11-22
+
+### Fixed
+
+- **A document that carries its own bibliography now exports cleanly.** `\begin{thebibliography}{…}` with `\bibitem{key}` entries used to reach the preview as raw prose, with `\bibitem` and `\newblock` showing as text and citations printing `[?]` when no `.bib` library was loaded. The environment is now parsed in place: each `\bibitem` becomes an entry in the same numbered **References** list the `.bib` path produces, `\cite` resolves against those keys, and entries keep their emphasis and formulas. Reference numbers follow `\bibitem` order, every entry is listed even when nothing cites it, and `\bibitem[label]{key}` labels are used by `\citet`.
+- A key known only to the `.bib` library is appended to that list in number order, so a mixed document never prints a citation number without a matching entry.
+- The “Missing bibliography entry” hint now mentions defining the key with `\bibitem`.
+
 ## [1.3.2] - 2026-11-22
 
 ### Fixed

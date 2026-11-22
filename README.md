@@ -2,7 +2,7 @@
 
 https://mh-studioz.github.io/scidocs/
 
-v1.3.2
+v1.3.3
 
 [Release notes](CHANGELOG.md)
 
@@ -103,6 +103,8 @@ In the document, the preview resolves `\cite`, `\citep`, `\citet`, `\citealp`, `
 - `\citet{key}` prints the first author and year. Optional note arguments such as `\cite[chap. 2]{key}` are accepted but not printed.
 - A key with no bibliography entry renders as `[?]` and is reported in **Problems** and the issue-count badge.
 - Typing `\cite{` and pressing **Ctrl/Cmd + Space** autocompletes from the library; commas add further keys.
+
+A document can also carry its own bibliography. `\begin{thebibliography}{9}` … `\end{thebibliography}` with `\bibitem{key}` entries is parsed in place: the entries become the same numbered **References** list, `\cite` resolves without any `.bib` file, entries keep their LaTeX (emphasis, formulas), every `\bibitem` is listed even when uncited, and the reference numbers follow `\bibitem` order. `\bibitem[label]{key}` labels are used by `\citet`. A key that only the `.bib` library knows is appended to that list in number order, so numbers never dangle.
 
 The library is parsed once and cached until its BibTeX text changes, so a large `.bib` file does not slow down live preview or diagnostics.
 

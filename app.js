@@ -2690,6 +2690,8 @@ Close with the main takeaway.
       case 'multicols':
         return '<div class="doc-center">' +
           renderBlocks(String(inner).replace(/^\s*\{[^}]*\}/, ''), ctx) + '</div>';
+      case 'thebibliography':
+        return renderBibliography(inner, ctx);
       case 'document':
         return renderBlocks(inner, ctx);
       default:
@@ -3143,6 +3145,8 @@ Close with the main takeaway.
 
   function formatBibEntry(entry) {
     if (!entry) return '';
+    /* \bibitem entries arrive as prose, not as BibTeX fields. */
+    if (entry.latex) return cleanBibValue(entry.latex);
     const author = bibAuthor(entry);
     const head = author
       ? author + (entry.year ? ' (' + entry.year + ')' : '')
@@ -3154,6 +3158,43 @@ Close with the main takeaway.
     if (venue) bits.push(venue.replace(/\.$/, '') + '.');
     const tail = entry.doi ? ' doi:' + entry.doi : entry.url ? ' ' + entry.url : '';
     return (bits.join(' ') || entry.key) + tail;
+  }
+
+  /* A document may carry its own bibliography instead of a .bib library:
+     \begin{thebibliography}{1} \bibitem{key} text … \end{thebibliography}.
+     Those entries are plain LaTeX and take part in citation numbering just like
+     library entries, so \cite resolves without any imported .bib file. */
+  function parseBibItems(text) {
+    const src = String(text || '');
+    const open = /\\begin\s*\{thebibliography\}(?:\s*\{[^}]*\})?/.exec(src);
+    let inner = open ? src.slice(open.index + open[0].length) : src;
+    const close = inner.indexOf('\\end{thebibliography}');
+    if (close >= 0) inner = inner.slice(0, close);
+    const items = [];
+    const re = /\\bibitem\s*(?:\[([^\]]*)\])?\s*\{([^}]*)\}/g;
+    let match;
+    let cursor = -1;
+    let current = null;
+    while ((match = re.exec(inner)) !== null) {
+      if (current) {
+        current.text = inner.slice(cursor, match.index);
+        items.push(current);
+      }
+      current = { key: match[2].trim(), label: (match[1] || '').trim() };
+      cursor = re.lastIndex;
+    }
+    if (current) {
+      current.text = inner.slice(cursor);
+      items.push(current);
+    }
+    return items
+      .filter((item) => item.key)
+      .map((item) => ({
+        key: item.key,
+        label: item.label,
+        type: 'bibitem',
+        latex: String(item.text || '').replace(/\\newblock\b/g, ' ').replace(/\s+/g, ' ').trim()
+      }));
   }
 
   function parseCitations(source) {
@@ -3175,15 +3216,22 @@ Close with the main takeaway.
       }
     });
     const entryMap = new Map(readBibEntries().map((entry) => [entry.key, entry]));
+    /* The document's own \bibitem list wins over a library entry with the same
+       key and fixes the reference numbers, as it does in LaTeX. */
+    const bibItems = parseBibItems(source);
+    bibItems.forEach((entry) => entryMap.set(entry.key, entry));
     const numbers = new Map();
     let nextNumber = 0;
-    order.forEach((key) => {
-      if (!entryMap.has(key)) return;
+    const sequence = bibItems.length
+      ? bibItems.map((entry) => entry.key).concat(order.filter((key) => !bibItems.some((entry) => entry.key === key)))
+      : order;
+    sequence.forEach((key) => {
+      if (!entryMap.has(key) || numbers.has(key)) return;
       nextNumber += 1;
       numbers.set(key, nextNumber);
     });
     const missing = order.filter((key) => !entryMap.has(key));
-    return { order, counts, occurrences, missing, entryMap, numbers };
+    return { order, counts, occurrences, missing, entryMap, numbers, bibItems };
   }
 
   function citeKeys(raw) {
@@ -3211,11 +3259,42 @@ Close with the main takeaway.
     if (style === 'paren') return { html: '<span class="' + cls + '">(' + escapeHtml(label) + ')</span>', missing };
     if (style === 'text') {
       const entry = citations && citations.entryMap ? citations.entryMap.get(keys[0]) : null;
-      const who = entry ? bibAuthor(entry) : keys[0];
+      /* \bibitem entries have no author field; use their label or the key. */
+      const who = entry ? (bibAuthor(entry) || entry.label || keys[0]) : keys[0];
       const year = entry && entry.year ? ' (' + entry.year + ')' : '';
       return { html: '<span class="' + cls + '">' + escapeHtml(who + year) + '</span>', missing };
     }
     return { html: '<span class="' + cls + '">[' + escapeHtml(label) + ']</span>', missing };
+  }
+
+  /* Renders the document's own \bibitem list as the same numbered References
+     block the .bib path appends. Entries keep their LaTeX, so emphasis and
+     formulas inside a reference survive. */
+  function renderBibliography(inner, ctx) {
+    const items = parseBibItems(inner);
+    if (!items.length) return '';
+    const rows = items.map((item) =>
+      '<li class="doc-bib-item" id="bib:' + escapeHtml(item.key) + '">' +
+      renderProse(item.latex, ctx) + '</li>'
+    ).join('');
+    /* A cited key that only the .bib library knows keeps its number but would
+       have no entry here, so it is appended in number order. */
+    const citations = ctx && ctx.citations;
+    const extras = [];
+    if (citations && citations.numbers) {
+      citations.numbers.forEach((number, key) => {
+        if (items.some((item) => item.key === key)) return;
+        extras.push({ number, key });
+      });
+    }
+    extras.sort((a, b) => a.number - b.number);
+    const extraRows = extras.map((extra) =>
+      '<li class="doc-bib-item" id="bib:' + escapeHtml(extra.key) + '">' +
+      escapeHtml(formatBibEntry(citations.entryMap.get(extra.key))) + '</li>'
+    ).join('');
+    return '<section class="doc-bibliography" aria-label="References">' +
+      '<h2 class="doc-bib-title">References</h2>' +
+      '<ol class="doc-bib-list">' + rows + extraRows + '</ol></section>';
   }
 
   function bibliographyHtml(citations) {
@@ -3669,7 +3748,7 @@ Close with the main takeaway.
       add({
         severity: 'error',
         msg: 'Missing bibliography entry “' + key + '”.',
-        hint: 'Import a .bib file or add the entry in Bibliography.',
+        hint: 'Import a .bib file, add the entry in Bibliography, or define it with \\bibitem in a thebibliography block.',
         line: first && first.line
       });
     });
