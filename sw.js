@@ -1,10 +1,10 @@
 /* SciDocs offline shell. Bump CACHE when app.js, styles.css or the shell changes. */
-const CACHE = 'scidocs-v1.3.1';
+const CACHE = 'scidocs-v1.3.2';
 const CORE = [
   './',
   './index.html',
-  './styles.css?v=1.3.1',
-  './app.js?v=1.3.1',
+  './styles.css?v=1.3.2',
+  './app.js?v=1.3.2',
   './manifest.webmanifest',
   './icon-192.png',
   './icon-512.png'
@@ -27,7 +27,8 @@ const CDN = [
   'https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/dialog/dialog.min.js',
   'https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/searchcursor.min.js',
   'https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/search.min.js',
-  'https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js',
+  'https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js',
+  'https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js',
   'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap'
 ];
 

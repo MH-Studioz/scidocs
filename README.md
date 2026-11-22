@@ -2,7 +2,7 @@
 
 https://mh-studioz.github.io/scidocs/
 
-v1.3.1
+v1.3.2
 
 [Release notes](CHANGELOG.md)
 
@@ -172,7 +172,7 @@ If the model returns invalid KaTeX, SciDocs AI automatically sends one correctio
 - **Info** explains what the browser preview supports and where a full TeX compile is needed.
 - **Guide** explains the workflow in the app; this README is the longer reference.
 - The inline/display math toolbar buttons do not add `$` delimiters when the cursor is already inside math; they show a short notice instead. Empty wraps use a valid `$ $` or `$$ $$` pair, and boundary insertions add separation so a new `$$` is not formed accidentally.
-- Projects autosave to `IndexedDB` (with a `localStorage` mirror); PDF export rasterizes the compiled document, and if the renderer stalls for 30 seconds it opens the print dialog instead so you can still choose “Save as PDF”.
+- Projects autosave to `IndexedDB` (with a `localStorage` mirror). PDF export writes a real PDF file in the browser: body text stays selectable, formulas are embedded as 4× rasters of the MathJax rendering, figures use the attached images, and headings, tables and figures keep their captions across page breaks. Page numbers and a running title are added. If the exporter cannot start at all, it opens the print dialog instead so you can still choose “Save as PDF”.
 
 ## History and backups
 

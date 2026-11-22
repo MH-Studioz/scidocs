@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.2] - 2026-11-22
+
+### Fixed
+
+- **Export PDF now downloads a real PDF file.** The old export rasterized the whole page with html2pdf/html2canvas and could stall the tab indefinitely; the new exporter builds the document with jsPDF instead. Body text is real, selectable text with the page's fonts and colours, figures are embedded from their attached images, and formulas are rasterized from MathJax at 4× so inline and display math keep their shape. Every page gets its number and a running title.
+- Inline formulas and the ∎ end-of-proof mark were dropped from the PDF, because the line splitter rebuilt words character by character and had no text for them.
+- Text-only list items disappeared from the PDF — the generated References list lost its entries. A list item without element children is now drawn as a paragraph with its marker.
+- A table could be split from its caption across a page break; the table is measured first and moves to the next page with its caption when they fit together. A figure likewise reserves room for its caption.
+- A section number ran into its title (“1Results”).
+
+### Changed
+
+- html2pdf is no longer loaded. jsPDF 2.5.2 and MathJax 3.2.2 are loaded on demand and precached by the service worker, so export still works offline after the first use.
+
 ## [1.3.1] - 2026-11-21
 
 ### Fixed

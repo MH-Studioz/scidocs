@@ -6142,69 +6142,1020 @@ Close with the main takeaway.
     toast(ok ? 'LaTeX copied' : 'Could not access the clipboard', ok ? 'success' : 'error');
   }
 
+  /* ------------------------------------------------------------------ *
+   *  PDF export
+   *
+   *  The previous export rasterized the whole preview with html2canvas,
+   *  which locks the main thread on some machines and left the toolbar
+   *  stuck on “Rendering…”. This exporter never snapshots the page: the
+   *  body text is written as real, selectable PDF text, figures are
+   *  embedded from the attached image data, and formulas alone are
+   *  rasterized — from MathJax's self-contained SVG output at 4×.
+   * ------------------------------------------------------------------ */
+
+  const PDF_LIBS = {
+    jsPdf: 'https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js',
+    mathJax: 'https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js'
+  };
+  const PDF_PAGE = { width: 595.28, height: 841.89, margin: 56, footer: 24 };
+  const PDF_MATH_SCALE = 4;
+  const PDF_WINANSI = '€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ';
+  const PDF_GREEK = {
+    'α': 'alpha', 'β': 'beta', 'γ': 'gamma', 'δ': 'delta', 'ε': 'epsilon', 'ζ': 'zeta',
+    'η': 'eta', 'θ': 'theta', 'ι': 'iota', 'κ': 'kappa', 'λ': 'lambda', 'μ': 'mu',
+    'ν': 'nu', 'ξ': 'xi', 'π': 'pi', 'ρ': 'rho', 'σ': 'sigma', 'τ': 'tau',
+    'υ': 'upsilon', 'φ': 'phi', 'χ': 'chi', 'ψ': 'psi', 'ω': 'omega',
+    'Γ': 'Gamma', 'Δ': 'Delta', 'Θ': 'Theta', 'Λ': 'Lambda', 'Ξ': 'Xi', 'Π': 'Pi',
+    'Σ': 'Sigma', 'Υ': 'Upsilon', 'Φ': 'Phi', 'Ψ': 'Psi', 'Ω': 'Omega'
+  };
+
+  const pdfScripts = new Map();
+
+  function loadPdfScript(url) {
+    if (pdfScripts.has(url)) return pdfScripts.get(url);
+    const pending = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = url;
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => {
+        pdfScripts.delete(url);
+        reject(new Error('Could not load ' + url));
+      };
+      document.head.appendChild(script);
+    });
+    pdfScripts.set(url, pending);
+    return pending;
+  }
+
+  function ensureJsPdf() {
+    if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve(window.jspdf.jsPDF);
+    return loadPdfScript(PDF_LIBS.jsPdf).then(() => {
+      if (!window.jspdf || !window.jspdf.jsPDF) throw new Error('jsPDF did not register');
+      return window.jspdf.jsPDF;
+    });
+  }
+
+  function ensureMathJax() {
+    if (window.MathJax && window.MathJax.tex2svg) return Promise.resolve(window.MathJax);
+    return loadPdfScript(PDF_LIBS.mathJax).then(() => {
+      const mj = window.MathJax;
+      if (!mj || !mj.tex2svg) throw new Error('MathJax did not register');
+      if (mj.startup && mj.startup.promise) return mj.startup.promise.then(() => mj);
+      return mj;
+    });
+  }
+
+  /* WinAnsi (the standard PDF fonts) cannot encode every character a
+     document can contain. Replace what has a sane plain-text form and fall
+     back to a name, so a stray symbol never breaks the whole export. */
+  function pdfSafeText(text) {
+    let out = '';
+    for (const ch of String(text)) {
+      const code = ch.codePointAt(0);
+      if (code === 0x2016) { out += '||'; continue; }
+      if (code === 0x220e) { continue; }
+      if (code === 0x2212) { out += '-'; continue; }
+      if (code === 0x2192) { out += '->'; continue; }
+      if (code === 0x2190) { out += '<-'; continue; }
+      if (code === 0x2264) { out += '<='; continue; }
+      if (code === 0x2265) { out += '>='; continue; }
+      if (code === 0x2260) { out += '!='; continue; }
+      if (code === 0x2248) { out += '~='; continue; }
+      if (code === 0x221e) { out += 'inf'; continue; }
+      if (code === 0x00a0) { out += ' '; continue; }
+      if (code === 0x2032) { out += "'"; continue; }
+      if (code === 0x2033) { out += '"'; continue; }
+      if (code === 0x2026) { out += '...'; continue; }
+      if (code < 32) { out += ' '; continue; }
+      if (code <= 0x7e) { out += ch; continue; }
+      if (code >= 0xa0 && code <= 0xff) { out += ch; continue; }
+      if (PDF_WINANSI.indexOf(ch) >= 0) { out += ch; continue; }
+      if (PDF_GREEK[ch]) { out += PDF_GREEK[ch]; continue; }
+      out += '';
+    }
+    return out;
+  }
+
+  function pdfColorOf(css) {
+    const match = /rgba?\(([^)]+)\)/.exec(css || '');
+    if (!match) return null;
+    const parts = match[1].split(',').map((part) => parseFloat(part));
+    if (parts.length < 3 || parts.slice(0, 3).some((part) => !isFinite(part))) return null;
+    return parts.slice(0, 3).map((part) => Math.max(0, Math.min(255, Math.round(part))));
+  }
+
+  /* Maps the computed style of a preview node onto a PDF font. */
+  function pdfStyleOf(cs, scale) {
+    const familyCss = String(cs.fontFamily || '').toLowerCase();
+    let family = 'times';
+    if (/mono|courier/.test(familyCss)) family = 'courier';
+    else if (/jakarta|inter|sans-serif/.test(familyCss)) family = 'helvetica';
+    const bold = (parseInt(cs.fontWeight, 10) || 400) >= 600;
+    const italic = /italic|oblique/.test(cs.fontStyle || '');
+    const fontStyle = bold && italic ? 'bolditalic' : bold ? 'bold' : italic ? 'italic' : 'normal';
+    const size = parseFloat(cs.fontSize);
+    return {
+      family,
+      fontStyle,
+      size: Math.max(5.5, (isFinite(size) ? size : 15) * scale),
+      color: pdfColorOf(cs.color) || [17, 24, 39],
+      rise: 0
+    };
+  }
+
+  function pdfLineHeight(cs, style) {
+    const raw = parseFloat(cs.lineHeight);
+    if (isFinite(raw) && raw > 0) return raw;
+    return style.size * 1.5;
+  }
+
+  function mathTexOf(el) {
+    const annotation = el.querySelector('annotation[encoding="application/x-tex"]');
+    if (annotation && annotation.textContent.trim()) return annotation.textContent;
+    return (el.textContent || '').trim();
+  }
+
+  function baselineProbe(el) {
+    const probe = document.createElement('span');
+    probe.style.cssText = 'display:inline-block;width:0;height:0;margin:0;padding:0;border:0;vertical-align:baseline';
+    el.parentNode.insertBefore(probe, el);
+    const rect = probe.getBoundingClientRect();
+    probe.remove();
+    return rect.bottom;
+  }
+
+  function svgAspect(svg) {
+    const viewBox = svg.getAttribute('viewBox');
+    if (viewBox) {
+      const parts = viewBox.split(/[\s,]+/).map((part) => parseFloat(part));
+      if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) return parts[3] / parts[2];
+    }
+    const w = parseFloat(svg.getAttribute('width'));
+    const h = parseFloat(svg.getAttribute('height'));
+    if (w > 0 && h > 0) return h / w;
+    return 0.36;
+  }
+
+  function rasterizeMath(mathJax, tex, display, widthPt, heightPt) {
+    const output = mathJax.tex2svg(tex, { display });
+    const svg = output.querySelector('svg');
+    if (!svg) return null;
+    svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    const width = Math.max(2, Math.ceil(widthPt * PDF_MATH_SCALE));
+    const height = Math.max(2, Math.ceil(heightPt * PDF_MATH_SCALE));
+    if (width * height > 24000000) return null;
+    const markup = svg.outerHTML;
+    return new Promise((resolve) => {
+      const image = new Image();
+      image.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(image, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/png'));
+        } catch (_) {
+          resolve(null);
+        }
+      };
+      image.onerror = () => resolve(null);
+      image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(markup);
+    });
+  }
+
+  function measureImage(src) {
+    return new Promise((resolve) => {
+      const image = new Image();
+      image.onload = () => resolve({ w: image.naturalWidth || 0, h: image.naturalHeight || 0 });
+      image.onerror = () => resolve(null);
+      image.src = src;
+    });
+  }
+
+  const PDF_BLOCK_TAGS = new Set(['p', 'div', 'section', 'article', 'figure', 'figcaption', 'ul', 'ol', 'dl', 'table', 'pre', 'blockquote', 'nav', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr']);
+
+  /* Builds the downloadable PDF for the compiled stage. */
+  async function buildPdfBlob(paper, meta) {
+    const JsPDF = await ensureJsPdf();
+    const mathJax = await ensureMathJax();
+
+    const paperStyle = getComputedStyle(paper);
+    const padX = (parseFloat(paperStyle.paddingLeft) || 0) + (parseFloat(paperStyle.paddingRight) || 0);
+    const contentPx = Math.max(120, (parseFloat(paperStyle.width) || paper.offsetWidth || 700) - padX);
+    const scale = (PDF_PAGE.width - PDF_PAGE.margin * 2) / contentPx;
+
+    const doc = new JsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait', compress: true });
+    if (meta) {
+      doc.setProperties({
+        title: pdfSafeText(meta.title || 'Untitled Document'),
+        author: pdfSafeText(meta.author || ''),
+        creator: 'SciDocs'
+      });
+    }
+
+    /* Formulas and figure sizes are measured in the live preview DOM. */
+    const mathImages = new Map();
+    const mathCache = new Map();
+    for (const el of Array.from(paper.querySelectorAll('.katex'))) {
+      const tex = mathTexOf(el);
+      if (!tex) continue;
+      const display = !!el.closest('.eq-body');
+      const box = el.getBoundingClientRect();
+      if (!box.width) continue;
+      const widthPt = Math.max(4, box.width * scale);
+      const key = (display ? 'D|' : 'I|') + tex + '|' + Math.round(widthPt * 10);
+      let entry = mathCache.get(key);
+      if (entry === undefined) {
+        const probe = mathJax.tex2svg(tex, { display }).querySelector('svg');
+        const heightPt = Math.max(4, widthPt * (probe ? svgAspect(probe) : 0.36));
+        entry = await rasterizeMath(mathJax, tex, display, widthPt, heightPt);
+        entry = entry ? { data: entry, width: widthPt, height: heightPt } : null;
+        mathCache.set(key, entry);
+      }
+      if (entry) {
+        const baseline = baselineProbe(el);
+        mathImages.set(el, {
+          data: entry.data,
+          width: entry.width,
+          height: entry.height,
+          descent: Math.max(0, Math.min(entry.height, (box.bottom - baseline) * scale))
+        });
+      }
+    }
+
+    const imageMetrics = new Map();
+    for (const img of Array.from(paper.querySelectorAll('img'))) {
+      const src = img.getAttribute('src') || '';
+      if (!src.startsWith('data:image/')) continue;
+      const size = await measureImage(src);
+      if (size) imageMetrics.set(img, size);
+    }
+
+    const PAGE = PDF_PAGE;
+    const LEFT = PAGE.margin;
+    const WIDTH = PAGE.width - PAGE.margin * 2;
+    const BOTTOM = PAGE.height - PAGE.margin - PAGE.footer;
+    const state = { y: PAGE.margin };
+    let pendingMarker = null;
+    let pendingPrefix = null;
+
+    function nextPage() {
+      doc.addPage();
+      state.y = PAGE.margin;
+      pendingMarker = null;
+    }
+
+    function ensureSpace(height) {
+      if (state.y + height > BOTTOM) nextPage();
+    }
+
+    function blank(amount) {
+      if (!(amount > 0)) return;
+      if (state.y > PAGE.margin + 0.5) state.y += amount;
+    }
+
+    function applyStyle(style) {
+      doc.setFont(style.family, style.fontStyle);
+      doc.setFontSize(style.size);
+      doc.setTextColor(style.color[0], style.color[1], style.color[2]);
+    }
+
+    function widthOf(text, style) {
+      applyStyle(style);
+      return doc.getTextWidth(text);
+    }
+
+    function drawText(text, style, x, y) {
+      if (!text) return;
+      applyStyle(style);
+      doc.text(text, x, y);
+    }
+
+    function drawMath(entry, x, baseline) {
+      const top = baseline + entry.descent - entry.height;
+      doc.addImage(entry.data, 'PNG', x, top, entry.width, entry.height);
+    }
+
+    /* ---- inline content --------------------------------------------- */
+
+    function atomsFor(el) {
+      const atoms = [];
+      const walk = (node, style) => {
+        for (const child of node.childNodes) {
+          if (child.nodeType === 3) {
+            const raw = pdfSafeText(child.nodeValue.replace(/\s+/g, ' '));
+            if (!raw) continue;
+            atoms.push({ kind: 'text', text: raw, style });
+            continue;
+          }
+          if (child.nodeType !== 1) continue;
+          const tag = child.tagName.toLowerCase();
+          if (tag === 'br') {
+            atoms.push({ kind: 'break' });
+            continue;
+          }
+          if (child.classList.contains('katex')) {
+            const entry = mathImages.get(child);
+            if (entry) atoms.push({ kind: 'math', entry });
+            else {
+              const fallback = pdfSafeText(mathTexOf(child));
+              if (fallback) atoms.push({ kind: 'text', text: fallback, style });
+            }
+            continue;
+          }
+          if (tag === 'img') continue;
+          const next = pdfStyleOf(getComputedStyle(child), scale);
+          if (tag === 'sup') next.rise = (style.rise || 0) + next.size * 0.34;
+          if (tag === 'sub') next.rise = (style.rise || 0) - next.size * 0.16;
+          if (child.classList.contains('doc-qed')) {
+            atoms.push({ kind: 'qed', style: next });
+            continue;
+          }
+          walk(child, next);
+          /* the heading number is separated from its title by a margin */
+          if (child.classList.contains('doc-h-num')) {
+            atoms.push({ kind: 'text', text: ' ', style: next });
+          }
+        }
+      };
+      walk(el, pdfStyleOf(getComputedStyle(el), scale));
+      return atoms;
+    }
+
+    function inlineWidth(atoms) {
+      let total = 0;
+      atoms.forEach((atom) => {
+        if (atom.kind === 'text') total += widthOf(atom.text, atom.style);
+        else if (atom.kind === 'math') total += atom.entry.width;
+        else if (atom.kind === 'qed') total += widthOf('∎', atom.style) || 4;
+      });
+      return total;
+    }
+
+    function tokensFor(atoms) {
+      const tokens = [];
+      atoms.forEach((atom) => {
+        if (atom.kind === 'break') {
+          tokens.push({ type: 'break' });
+          return;
+        }
+        if (atom.kind === 'math') {
+          tokens.push({ type: 'word', parts: [{ atom, text: '', width: atom.entry.width }] });
+          return;
+        }
+        if (atom.kind === 'qed') {
+          tokens.push({ type: 'word', parts: [{ atom, text: '', width: 5 }] });
+          return;
+        }
+        atom.text.split(/( +)/).forEach((piece) => {
+          if (!piece) return;
+          if (/^ +$/.test(piece)) {
+            tokens.push({ type: 'space', width: widthOf(' ', atom.style) });
+          } else {
+            tokens.push({ type: 'word', parts: [{ atom, text: piece, width: widthOf(piece, atom.style) }] });
+          }
+        });
+      });
+      return tokens;
+    }
+
+    function splitOverlong(tokens, width) {
+      const out = [];
+      tokens.forEach((token) => {
+        if (token.type !== 'word' || token.parts.length !== 1) {
+          out.push(token);
+          return;
+        }
+        const part = token.parts[0];
+        /* Formulas and the QED mark have no text to split; pass them through. */
+        if (part.atom.kind !== 'text') {
+          out.push(token);
+          return;
+        }
+        let chunk = '';
+        let chunkWidth = 0;
+        Array.from(part.text).forEach((ch) => {
+          const w = widthOf(ch, part.atom.style);
+          if (chunk && chunkWidth + w > width) {
+            out.push({ type: 'word', parts: [{ atom: part.atom, text: chunk, width: chunkWidth }] });
+            out.push({ type: 'break' });
+            chunk = '';
+            chunkWidth = 0;
+          }
+          chunk += ch;
+          chunkWidth += w;
+        });
+        if (chunk) out.push({ type: 'word', parts: [{ atom: part.atom, text: chunk, width: chunkWidth }] });
+      });
+      return out;
+    }
+
+    function layoutLines(atoms, width) {
+      const tokens = splitOverlong(tokensFor(atoms), width);
+      const lines = [];
+      let line = { parts: [], width: 0, gaps: 0 };
+      let space = 0;
+
+      const flush = () => {
+        lines.push(line);
+        line = { parts: [], width: 0, gaps: 0 };
+        space = 0;
+      };
+
+      tokens.forEach((token) => {
+        if (token.type === 'break') {
+          flush();
+          return;
+        }
+        if (token.type === 'space') {
+          if (line.parts.length) space = Math.max(space, token.width);
+          return;
+        }
+        const wordWidth = token.parts.reduce((sum, part) => sum + part.width, 0);
+        if (line.parts.length && line.width + space + wordWidth > width + 0.2) flush();
+        if (line.parts.length && space) {
+          line.parts.push({ space });
+          line.width += space;
+          line.gaps += 1;
+          space = 0;
+        }
+        token.parts.forEach((part) => {
+          line.parts.push(part);
+          line.width += part.width;
+        });
+      });
+      flush();
+      return lines;
+    }
+
+    function drawLines(lines, options) {
+      const align = options.align || 'left';
+      const justify = !!options.justify;
+      const lineHeight = options.lineHeight || 12;
+      lines.forEach((line, index) => {
+        ensureSpace(lineHeight);
+        const top = state.y;
+        if (options.band) {
+          doc.setFillColor(options.band[0], options.band[1], options.band[2]);
+          doc.rect(options.x - 6, top, options.width + 12, lineHeight, 'F');
+        }
+        if (options.bar) {
+          doc.setFillColor(options.bar[0], options.bar[1], options.bar[2]);
+          doc.rect(options.x - 6, top, 2, lineHeight, 'F');
+        }
+        let x = options.x;
+        if (align === 'center') x += (options.width - line.width) / 2;
+        else if (align === 'right') x += options.width - line.width;
+        const baseline = top + lineHeight * 0.72;
+        if (pendingMarker && index === 0) {
+          drawText(pendingMarker.text, pendingMarker.style, pendingMarker.x, baseline);
+          pendingMarker = null;
+        }
+        const extra = justify && index < lines.length - 1 && line.gaps > 0
+          ? Math.max(0, (options.width - line.width) / line.gaps)
+          : 0;
+        line.parts.forEach((part) => {
+          if (part.space) {
+            x += part.space + extra;
+            return;
+          }
+          const atom = part.atom;
+          if (atom.kind === 'text') {
+            drawText(part.text, atom.style, x, baseline + atom.style.rise);
+          } else if (atom.kind === 'math') {
+            drawMath(atom.entry, x, baseline);
+          } else if (atom.kind === 'qed') {
+            doc.setFillColor(79, 70, 229);
+            doc.rect(x, baseline - 4, 4.4, 4.4, 'F');
+          }
+          x += part.width;
+        });
+        state.y = top + lineHeight;
+      });
+    }
+
+    function layoutParagraph(el, box, options) {
+      const cs = getComputedStyle(el);
+      let atoms = atomsFor(el);
+      if (pendingPrefix) {
+        atoms = pendingPrefix.concat(atoms);
+        pendingPrefix = null;
+      }
+      if (!atoms.length) return;
+      const style = pdfStyleOf(cs, scale);
+      const lineHeight = pdfLineHeight(cs, style);
+      const lines = layoutLines(atoms, box.width);
+      const align = (options && options.align) || (/center/.test(cs.textAlign) ? 'center' : /right/.test(cs.textAlign) ? 'right' : 'left');
+      const justify = !options && /justify/.test(cs.textAlign);
+      drawLines(lines, {
+        x: box.x,
+        width: box.width,
+        align,
+        justify,
+        lineHeight,
+        band: box.band,
+        bar: box.bar
+      });
+      blank((parseFloat(cs.marginBottom) || 0) * scale);
+    }
+
+    /* ---- block elements --------------------------------------------- */
+
+    function layoutHeading(el, box) {
+      const cs = getComputedStyle(el);
+      const atoms = atomsFor(el);
+      if (!atoms.length) return;
+      const style = pdfStyleOf(cs, scale);
+      const lineHeight = pdfLineHeight(cs, style);
+      const lines = layoutLines(atoms, box.width);
+      const before = (state.y > PAGE.margin + 0.5 ? Math.max(8, (parseFloat(cs.marginTop) || 0) * scale) : 0);
+      ensureSpace(before + lines.length * lineHeight + lineHeight * 1.6);
+      state.y += before;
+      drawLines(lines, { x: box.x, width: box.width, lineHeight, align: 'left' });
+      if (el.classList.contains('doc-h2') || (parseFloat(cs.borderBottomWidth) || 0) > 0) {
+        doc.setDrawColor(203, 213, 225);
+        doc.setLineWidth(0.6);
+        doc.line(box.x, state.y + 1.5, box.x + box.width, state.y + 1.5);
+        state.y += 3;
+      }
+      blank(Math.max(3, (parseFloat(cs.marginBottom) || 0) * scale * 0.7));
+    }
+
+    function layoutEquation(el, box) {
+      const katex = el.querySelector('.eq-body .katex') || el.querySelector('.katex');
+      const entry = katex ? mathImages.get(katex) : null;
+      const numberEl = el.querySelector('.eq-number');
+      const number = numberEl ? pdfSafeText(numberEl.textContent.trim()) : '';
+      const numberWidth = number ? 26 : 0;
+      const available = box.width - numberWidth;
+      if (!entry) {
+        const atoms = atomsFor(el);
+        if (!atoms.length) return;
+        const lines = layoutLines(atoms, box.width);
+        drawLines(lines, { x: box.x, width: box.width, lineHeight: 14, align: 'center' });
+        blank(8);
+        return;
+      }
+      let width = entry.width;
+      let height = entry.height;
+      if (width > available) {
+        const shrink = available / width;
+        width *= shrink;
+        height *= shrink;
+      }
+      state.y += 5;
+      ensureSpace(height + 10);
+      const x = box.x + (available - width) / 2;
+      doc.addImage(entry.data, 'PNG', x, state.y, width, height);
+      if (number) {
+        const style = pdfStyleOf(getComputedStyle(numberEl), scale);
+        drawText(number, style, box.x + box.width - widthOf(number, style), state.y + height * 0.62);
+      }
+      state.y += height + 9;
+    }
+
+    function layoutFigureMedia(el, box, caption) {
+      const imgEl = el.querySelector('img');
+      if (!imgEl) return;
+      const src = imgEl.getAttribute('src') || '';
+      if (!src.startsWith('data:image/')) return;
+      const size = imageMetrics.get(imgEl);
+      if (!size || !size.w) return;
+      const inline = /width:\s*([\d.]+)%/.exec(imgEl.getAttribute('style') || '');
+      let width = inline
+        ? (parseFloat(inline[1]) / 100) * box.width
+        : Math.min(size.w * scale, box.width);
+      width = Math.max(24, Math.min(width, box.width));
+      let height = width * (size.h / size.w);
+      const limit = (BOTTOM - PAGE.margin) * 0.8;
+      if (height > limit) {
+        width *= limit / height;
+        height = limit;
+      }
+      /* Reserve room for the caption so it never separates from the image */
+      let reserve = 0;
+      if (caption) {
+        const captionCs = getComputedStyle(caption);
+        const captionStyle = pdfStyleOf(captionCs, scale);
+        const captionLines = layoutLines(atomsFor(caption), box.width);
+        reserve = Math.min(140, captionLines.length * pdfLineHeight(captionCs, captionStyle) + 7);
+      }
+      ensureSpace(height + 8 + reserve);
+      doc.addImage(src, /^data:image\/jpe?g/.test(src) ? 'JPEG' : 'PNG',
+        box.x + (box.width - width) / 2, state.y, width, height);
+      state.y += height + 7;
+    }
+
+    function layoutFigurePlaceholder(el, box) {
+      const text = pdfSafeText(el.textContent.replace(/\s+/g, ' ').trim());
+      const height = 54;
+      state.y += 4;
+      ensureSpace(height + 8);
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.6);
+      doc.setLineDashPattern([3, 3], 0);
+      doc.rect(box.x, state.y, box.width, height, 'S');
+      doc.setLineDashPattern([], 0);
+      const style = pdfStyleOf(getComputedStyle(el), scale);
+      style.color = [100, 116, 139];
+      doc.setFont(style.family, style.fontStyle);
+      doc.setFontSize(style.size);
+      doc.text(text, box.x + box.width / 2, state.y + height / 2 + style.size * 0.35, {
+        align: 'center',
+        maxWidth: box.width - 16
+      });
+      state.y += height + 8;
+    }
+
+    function layoutFigure(el, box) {
+      Array.from(el.children).forEach((child) => {
+        const cls = child.classList;
+        if (cls.contains('doc-figure-media')) layoutFigureMedia(child, box, el.querySelector('figcaption'));
+        else if (cls.contains('doc-figure-box')) layoutFigurePlaceholder(child, box);
+        else if (child.tagName.toLowerCase() === 'figcaption') layoutCaption(child, box);
+        else layoutBlock(child, box);
+      });
+      blank(8);
+    }
+
+    function layoutCaption(el, box) {
+      const cs = getComputedStyle(el);
+      const atoms = atomsFor(el);
+      if (!atoms.length) return;
+      const style = pdfStyleOf(cs, scale);
+      const lines = layoutLines(atoms, box.width);
+      drawLines(lines, { x: box.x, width: box.width, lineHeight: pdfLineHeight(cs, style), align: 'center' });
+      blank(7);
+    }
+
+    function layoutTable(el, box) {
+      const rows = Array.from(el.rows || []);
+      if (!rows.length) return;
+      const padX = 5;
+      const padY = 4;
+      const grid = rows.map((row) => Array.from(row.cells).map((cell) => {
+        const cs = getComputedStyle(cell);
+        const atoms = atomsFor(cell);
+        return {
+          atoms,
+          style: pdfStyleOf(cs, scale),
+          lineHeight: pdfLineHeight(cs, pdfStyleOf(cs, scale)),
+          span: Math.max(1, cell.colSpan || 1),
+          align: cell.classList.contains('ta-c') ? 'center' : cell.classList.contains('ta-r') ? 'right' : 'left'
+        };
+      }));
+      const columns = grid.reduce((max, row) => Math.max(max, row.reduce((n, cell) => n + cell.span, 0)), 1);
+      const natural = new Array(columns).fill(40);
+      grid.forEach((row) => {
+        let col = 0;
+        row.forEach((cell) => {
+          if (cell.span === 1) natural[col] = Math.max(natural[col], inlineWidth(cell.atoms) + padX * 2);
+          col += cell.span;
+        });
+      });
+      let widths = natural.slice();
+      const total = widths.reduce((sum, w) => sum + w, 0);
+      if (total > box.width) {
+        const shrink = box.width / total;
+        widths = widths.map((w) => Math.max(26, w * shrink));
+      }
+      let tableWidth = widths.reduce((sum, w) => sum + w, 0);
+      if (tableWidth > box.width) {
+        widths = widths.map((w) => w * (box.width / tableWidth));
+        tableWidth = box.width;
+      }
+
+      /* Measure every row before drawing so the table and its caption stay
+         on the same page whenever they fit together. */
+      const cellWidths = grid.map((row, rowIndex) => row.map((cell, index) => {
+        let width = 0;
+        for (let span = 0; span < cell.span; span += 1) width += widths[Math.min(widths.length - 1, index + span)] || widths[widths.length - 1];
+        cell.boxWidth = Math.max(12, width - padX * 2);
+        return width;
+      }));
+      const cellLines = grid.map((row) => row.map((cell) => layoutLines(cell.atoms, cell.boxWidth)));
+      const rowHeights = cellLines.map((lines, rowIndex) => Math.max(
+        12,
+        ...lines.map((cellRow, index) => cellRow.length * grid[rowIndex][index].lineHeight + padY * 2)
+      ));
+      const tableHeight = rowHeights.reduce((sum, value) => sum + value, 0);
+      if (tableHeight + 28 <= BOTTOM - PAGE.margin && state.y + 4 + tableHeight + 28 > BOTTOM) nextPage();
+      state.y += 4;
+      grid.forEach((row, rowIndex) => {
+        const rowHeight = rowHeights[rowIndex];
+        ensureSpace(rowHeight);
+        const top = state.y;
+        let x = box.x;
+        row.forEach((cell, index) => {
+          const width = cellWidths[rowIndex][index];
+          if (rowIndex === 0) {
+            doc.setFillColor(241, 245, 249);
+            doc.rect(x, top, width, rowHeight, 'F');
+          }
+          doc.setDrawColor(203, 213, 225);
+          doc.setLineWidth(0.5);
+          doc.rect(x, top, width, rowHeight, 'S');
+          const lines = cellLines[rowIndex][index];
+          lines.forEach((line, lineIndex) => {
+            const baseline = top + padY + lineIndex * cell.lineHeight + cell.lineHeight * 0.72;
+            let lineX = x + padX;
+            if (cell.align === 'center') lineX = x + (width - line.width) / 2;
+            else if (cell.align === 'right') lineX = x + width - padX - line.width;
+            line.parts.forEach((part) => {
+              if (part.space) {
+                lineX += part.space;
+                return;
+              }
+              if (part.atom.kind === 'text') drawText(part.text, part.atom.style, lineX, baseline + part.atom.style.rise);
+              else if (part.atom.kind === 'math') drawMath(part.atom.entry, lineX, baseline);
+              lineX += part.width;
+            });
+          });
+          x += width;
+        });
+        state.y = top + rowHeight;
+      });
+      state.y += 6;
+    }
+
+    function layoutList(el, box) {
+      const tag = el.tagName.toLowerCase();
+      if (tag === 'dl') {
+        Array.from(el.children).forEach((child) => {
+          if (child.tagName.toLowerCase() === 'dt') {
+            const cs = getComputedStyle(child);
+            const atoms = atomsFor(child);
+            const style = pdfStyleOf(cs, scale);
+            drawLines(layoutLines(atoms, box.width), { x: box.x, width: box.width, lineHeight: pdfLineHeight(cs, style) });
+          } else {
+            layoutBlocks(child, { x: box.x + 14, width: box.width - 14, band: box.band, bar: box.bar });
+          }
+        });
+        blank(6);
+        return;
+      }
+      const ordered = tag === 'ol';
+      Array.from(el.children).forEach((item, index) => {
+        if (item.tagName.toLowerCase() !== 'li') return;
+        const markerText = ordered ? (index + 1) + '.' : '•';
+        const markerStyle = pdfStyleOf(getComputedStyle(item), scale);
+        markerStyle.color = [79, 70, 229];
+        const markerWidth = widthOf(markerText + '  ', markerStyle);
+        const inner = { x: box.x + markerWidth, width: box.width - markerWidth, band: box.band, bar: box.bar };
+        pendingMarker = { text: markerText, x: box.x, style: markerStyle };
+        /* A list item holding only inline content has no element children, so
+           it must be drawn as a paragraph instead of a block container. */
+        const hasBlocks = Array.from(item.children).some((child) => PDF_BLOCK_TAGS.has(child.tagName.toLowerCase()));
+        if (hasBlocks) layoutBlocks(item, inner);
+        else layoutParagraph(item, inner);
+        /* An item that starts with a figure or a formula never draws a text
+           line, so the marker is simply dropped instead of leaking into the
+           next item. */
+        pendingMarker = null;
+        blank(2);
+      });
+      blank((parseFloat(getComputedStyle(el).marginBottom) || 0) * scale * 0.6);
+    }
+
+    function layoutCode(el, box) {
+      const cs = getComputedStyle(el);
+      const style = pdfStyleOf(cs, scale);
+      const padX = 7;
+      const padY = 5;
+      const innerWidth = box.width - padX * 2;
+      const raw = el.textContent.replace(/\t/g, '    ').replace(/\r\n?/g, '\n');
+      applyStyle(style);
+      const lines = [];
+      raw.split('\n').forEach((source) => {
+        let current = '';
+        Array.from(source).forEach((ch) => {
+          if (current && doc.getTextWidth(current + ch) > innerWidth) {
+            lines.push(current);
+            current = '';
+          }
+          current += ch;
+        });
+        lines.push(current);
+      });
+      const lineHeight = style.size * 1.45;
+      state.y += 4;
+      lines.forEach((line) => {
+        ensureSpace(lineHeight);
+        doc.setFillColor(248, 250, 252);
+        doc.rect(box.x, state.y, box.width, lineHeight, 'F');
+        doc.setDrawColor(203, 213, 225);
+        doc.setLineWidth(1.2);
+        doc.line(box.x, state.y, box.x, state.y + lineHeight);
+        drawText(line, style, box.x + padX, state.y + lineHeight * 0.74);
+        state.y += lineHeight;
+      });
+      state.y += 6;
+    }
+
+    function layoutRule(box) {
+      state.y += 8;
+      ensureSpace(4);
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.6);
+      doc.line(box.x, state.y, box.x + box.width, state.y);
+      state.y += 8;
+    }
+
+    function layoutTitleBlock(el, box) {
+      Array.from(el.children).forEach((child) => {
+        const cs = getComputedStyle(child);
+        const atoms = atomsFor(child);
+        if (!atoms.length) return;
+        const style = pdfStyleOf(cs, scale);
+        const lines = layoutLines(atoms, box.width);
+        ensureSpace(lines.length * pdfLineHeight(cs, style) + 4);
+        drawLines(lines, { x: box.x, width: box.width, lineHeight: pdfLineHeight(cs, style), align: 'center' });
+        blank(4);
+      });
+      doc.setFillColor(99, 102, 241);
+      doc.rect(box.x + box.width / 2 - 20, state.y + 2, 40, 2.2, 'F');
+      state.y += 20;
+    }
+
+    function layoutToc(el, box) {
+      Array.from(el.children).forEach((child) => {
+        if (child.tagName.toLowerCase() === 'ol') {
+          Array.from(child.children).forEach((item) => {
+            const level = (function () {
+              const match = /toc-([1-5])/.exec(item.className || '');
+              return match ? Number(match[1]) : 1;
+            })();
+            const cs = getComputedStyle(item);
+            const atoms = atomsFor(item);
+            const style = pdfStyleOf(cs, scale);
+            const indent = (level - 1) * 14;
+            drawLines(layoutLines(atoms, box.width - indent), {
+              x: box.x + indent,
+              width: box.width - indent,
+              lineHeight: pdfLineHeight(cs, style)
+            });
+          });
+          blank(8);
+          return;
+        }
+        const cs = getComputedStyle(child);
+        const atoms = atomsFor(child);
+        if (!atoms.length) return;
+        const style = pdfStyleOf(cs, scale);
+        drawLines(layoutLines(atoms, box.width), {
+          x: box.x,
+          width: box.width,
+          lineHeight: pdfLineHeight(cs, style),
+          align: 'center'
+        });
+        blank(4);
+      });
+    }
+
+    function layoutBox(el, box, options) {
+      const band = options.band;
+      const bar = options.bar;
+      const inner = {
+        x: box.x + (options.pad || 0),
+        width: box.width - (options.pad || 0) * 2,
+        band,
+        bar
+      };
+      if (options.title) {
+        const titleEl = el.querySelector(options.title);
+        if (titleEl) {
+          const cs = getComputedStyle(titleEl);
+          const atoms = atomsFor(titleEl);
+          const style = pdfStyleOf(cs, scale);
+          drawLines(layoutLines(atoms, inner.width), {
+            x: inner.x,
+            width: inner.width,
+            lineHeight: pdfLineHeight(cs, style),
+            align: 'center',
+            band,
+            bar
+          });
+          blank(4);
+        }
+      }
+      Array.from(el.children).forEach((child) => {
+        if (options.title && child.matches(options.title)) return;
+        if (options.skip && child.matches(options.skip)) return;
+        if (options.labelClass && child.classList.contains(options.labelClass)) {
+          pendingPrefix = atomsFor(child);
+          const style = pdfStyleOf(getComputedStyle(child), scale);
+          pendingPrefix.push({ kind: 'text', text: ' ', style });
+          return;
+        }
+        layoutBlock(child, inner);
+      });
+      blank(options.after === undefined ? 6 : options.after);
+    }
+
+    function layoutBlock(el, box) {
+      const tag = el.tagName.toLowerCase();
+      const cls = el.classList;
+      if (tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'h4' || tag === 'h5' || tag === 'h6' || cls.contains('doc-h')) {
+        layoutHeading(el, box);
+        return;
+      }
+      if (cls.contains('eq-block')) { layoutEquation(el, box); return; }
+      if (cls.contains('doc-titleblock')) { layoutTitleBlock(el, box); return; }
+      if (cls.contains('doc-toc')) { layoutToc(el, box); return; }
+      if (cls.contains('doc-theorem')) {
+        layoutBox(el, box, { band: [248, 250, 252], bar: [99, 102, 241], pad: 10, labelClass: 'doc-theorem-label' });
+        return;
+      }
+      if (cls.contains('doc-abstract')) {
+        layoutBox(el, box, { band: [248, 250, 252], bar: [226, 232, 240], pad: 12, title: '.doc-abstract-title' });
+        return;
+      }
+      if (cls.contains('doc-quote') || tag === 'blockquote') {
+        layoutBox(el, box, { bar: [203, 213, 225], pad: 12 });
+        return;
+      }
+      if (cls.contains('doc-table-wrap')) {
+        Array.from(el.children).forEach((child) => layoutBlock(child, box));
+        blank(6);
+        return;
+      }
+      if (tag === 'table') { layoutTable(el, box); return; }
+      if (cls.contains('doc-figure') || tag === 'figure') { layoutFigure(el, box); return; }
+      if (cls.contains('doc-figure-media')) { layoutFigureMedia(el, box); return; }
+      if (cls.contains('doc-figure-box')) { layoutFigurePlaceholder(el, box); return; }
+      if (cls.contains('doc-caption') || tag === 'figcaption') { layoutCaption(el, box); return; }
+      if (tag === 'ul' || tag === 'ol' || tag === 'dl') { layoutList(el, box); return; }
+      if (tag === 'pre') { layoutCode(el, box); return; }
+      if (tag === 'hr') { layoutRule(box); return; }
+      if (tag === 'p') { layoutParagraph(el, box); return; }
+      if (tag === 'nav' || tag === 'section' || cls.contains('doc-center') || cls.contains('doc-bibliography')) {
+        layoutBlocks(el, cls.contains('doc-center') ? { ...box, align: 'center' } : box);
+        blank(cls.contains('doc-bibliography') ? 2 : 4);
+        return;
+      }
+      if (tag === 'div' && (cls.length === 0 || cls.contains('doc-empty'))) {
+        layoutParagraph(el, box);
+        return;
+      }
+      const hasBlocks = Array.from(el.children).some((child) => PDF_BLOCK_TAGS.has(child.tagName.toLowerCase()));
+      if (hasBlocks) {
+        layoutBlocks(el, box);
+        return;
+      }
+      layoutParagraph(el, box);
+    }
+
+    function layoutBlocks(container, box) {
+      Array.from(container.children).forEach((child) => layoutBlock(child, box || { x: LEFT, width: WIDTH }));
+    }
+
+    layoutBlocks(paper, { x: LEFT, width: WIDTH });
+
+    /* Page numbers and a running title. */
+    const pages = doc.getNumberOfPages();
+    const title = meta && meta.title ? pdfSafeText(String(meta.title).replace(/<[^>]*>/g, '')) : '';
+    for (let index = 1; index <= pages; index += 1) {
+      doc.setPage(index);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(120, 130, 148);
+      doc.text(String(index), PAGE.width / 2, PAGE.height - PAGE.margin * 0.5, { align: 'center' });
+      if (title) {
+        doc.text(title.length > 60 ? title.slice(0, 57) + '...' : title, PAGE.margin, PAGE.height - PAGE.margin * 0.5);
+      }
+    }
+
+    return doc.output('blob');
+  }
+
   async function exportPdf() {
     if (!cm) return;
     const button = $('#exportPdfBtn');
     const label = button ? button.querySelector('span') : null;
     const original = label ? label.textContent : 'Export PDF';
-
-    if (typeof window.html2pdf === 'undefined') {
-      toast('PDF engine is still loading — opening the print dialog instead.', 'warn');
-      window.print();
-      return;
-    }
+    const stage = $('#pdfStage');
 
     if (button) button.disabled = true;
     if (label) label.textContent = 'Rendering…';
 
-    const stage = $('#pdfStage');
-    let timedOut = false;
-    /* html2canvas can stall on very large documents; never leave the button
-       stuck on “Rendering…”. After 30 s we offer the print dialog, which still
-       produces a PDF through “Save as PDF”. */
-    const watchdog = setTimeout(() => {
-      timedOut = true;
-      toast('PDF rendering is slow here — opening the print dialog. Choose “Save as PDF”.', 'warn');
-      window.print();
-    }, 30000);
     try {
       const result = compileDocument(cm.getValue());
       stage.innerHTML = '<article class="paper">' + (result.html || '') + '</article>';
       if (document.fonts && document.fonts.ready) {
         try { await document.fonts.ready; } catch (_) { /* ignore */ }
       }
-      await new Promise((resolve) => setTimeout(resolve, 80));
-
-      await window
-        .html2pdf()
-        .set({
-          margin: 0,
-          filename: projectFileStem(activeProject()) + '.pdf',
-          image: { type: 'jpeg', quality: 0.96 },
-          html2canvas: {
-            scale: 1.25,
-            backgroundColor: '#ffffff',
-            useCORS: true,
-            logging: false,
-            windowWidth: 794,
-            ignoreElements: (node) =>
-              node.classList && node.classList.contains('katex-mathml')
-          },
-          jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
-          pagebreak: { mode: ['css'] }
-        })
-        .from(stage.firstElementChild)
-        .save();
-
-      if (!timedOut) toast('PDF exported', 'success');
+      const project = activeProject();
+      const filename = projectFileStem(project) + '.pdf';
+      const blob = await buildPdfBlob(stage.firstElementChild, result.meta);
+      triggerDownload(blob, filename);
+      toast('PDF exported with selectable text, formulas and figures', 'success');
     } catch (err) {
       console.error('SciDocs: PDF export failed', err);
-      if (!timedOut) {
-        toast('PDF export failed — opening the print dialog instead.', 'warn');
-        window.print();
-      }
+      toast('PDF export failed — opening the print dialog instead.', 'warn');
+      window.print();
     } finally {
-      clearTimeout(watchdog);
       stage.innerHTML = '';
       if (button) button.disabled = false;
       if (label) label.textContent = original;
