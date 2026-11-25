@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.3.8] - 2026-11-25
+
+### Added
+
+- **Keyboard access to on-sheet editing.** Every editable paragraph and heading is now a tab stop: **Tab** moves through them, **Enter** or **Space** opens the passage in place, and cancelling with **Esc** returns focus to that passage. Saving keeps the keyboard position too, so the next passage is one Tab away. Blocks that are read-only on the sheet stay out of the tab order.
+
+### Accessibility
+
+- Focused passages show a visible focus ring, and the blocks expose `aria-keyshortcuts="Enter"` so assistive technology can announce the shortcut.
+
 ## [1.3.7] - 2026-11-25
 
 ### Added

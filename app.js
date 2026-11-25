@@ -2448,7 +2448,7 @@ Close with the main takeaway.
       const lead = raw.length - raw.replace(/^\s+/, '').length;
       const trail = raw.length - raw.replace(/\s+$/, '').length;
       const attr = base !== null && body.indexOf('\\par') === -1
-        ? ' data-src="' + (base + from + lead) + ':' + (base + from + raw.length - trail) + '"'
+        ? ' data-src="' + (base + from + lead) + ':' + (base + from + raw.length - trail) + '" tabindex="0" aria-keyshortcuts="Enter"'
         : '';
       out += '<p' + attr + '>' + html + '</p>';
     });
@@ -2496,7 +2496,7 @@ Close with the main takeaway.
     });
 
     const srcAttr = Number.isFinite(srcStart) && String(arg).indexOf('\\par') === -1
-      ? ' data-src="' + srcStart + ':' + (srcStart + String(arg).length) + '"'
+      ? ' data-src="' + srcStart + ':' + (srcStart + String(arg).length) + '" tabindex="0" aria-keyshortcuts="Enter"'
       : '';
 
     return (
@@ -4053,6 +4053,7 @@ Close with the main takeaway.
    * ------------------------------------------------------------------ */
   let sheetEdit = null;
   let lastEditMap = null;
+  let sheetFocusIndex = -1;
 
   function sheetBlockFor(node) {
     const preview = $('#preview');
@@ -4088,10 +4089,20 @@ Close with the main takeaway.
     const current = sheetEdit;
     const value = current.editor.value;
     const previous = cm.getValue().slice(current.start, current.end);
+    const index = Array.from(document.querySelectorAll('#preview [data-src]')).indexOf(current.block);
     sheetEdit = null;
     if (current.wrap && current.wrap.parentNode) current.wrap.parentNode.removeChild(current.wrap);
     if (current.block) current.block.style.display = '';
-    if (!commit || value === previous) return;
+    if (!commit || value === previous) {
+      /* Cancelling returns the caret to the passage that was being edited. */
+      if (current.block && current.block.focus) {
+        try { current.block.focus({ preventScroll: true }); } catch (_) { current.block.focus(); }
+      }
+      return;
+    }
+    /* The preview re-renders after the splice, so remember the passage by its
+       position in the sheet and focus the new node once it exists. */
+    sheetFocusIndex = index;
     cm.replaceRange(value, cm.posFromIndex(current.start), cm.posFromIndex(current.end));
     toast('Sheet edit written to the source', 'success');
   }
@@ -4100,6 +4111,7 @@ Close with the main takeaway.
     if (!cm || !block) return;
     const range = sheetSourceRange(block);
     if (!range) return;
+    sheetFocusIndex = -1;
     discardSheetEdit();
     const value = cm.getValue().slice(range.start, range.end);
     const wrap = document.createElement('div');
@@ -4175,6 +4187,18 @@ Close with the main takeaway.
       event.preventDefault();
       startSheetEdit(block);
     });
+    /* Keyboard: Tab reaches each editable passage, Enter or Space opens it. */
+    /* Any real interaction means the saved passage no longer needs the caret. */
+    document.addEventListener('pointerdown', () => { sheetFocusIndex = -1; }, true);
+    document.addEventListener('keydown', () => { sheetFocusIndex = -1; }, true);
+    preview.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      const target = event.target;
+      if (!target || !target.closest || target !== target.closest('[data-src]')) return;
+      event.preventDefault();
+      startSheetEdit(target);
+    });
   }
 
   function renderNow(options) {
@@ -4230,6 +4254,14 @@ Close with the main takeaway.
     }
 
     updateStats();
+
+    if (sheetFocusIndex >= 0) {
+      const blocks = preview.querySelectorAll('[data-src]');
+      const target = blocks[Math.min(sheetFocusIndex, blocks.length - 1)];
+      if (target) {
+        try { target.focus({ preventScroll: true }); } catch (_) { target.focus(); }
+      }
+    }
 
     if (opts.manual) {
       toast('Compiled in ' + ms + ' ms', result.ctx.errors.length ? 'warn' : 'success');
