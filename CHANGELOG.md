@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.6] - 2026-11-25
+
+### Added
+
+- **Logic gates in the Symbol Lab.** A new **Logic & gates** group covers the seven gate operators — NOT `\neg`, AND `\land`, OR `\lor`, XOR `\oplus`, NAND `\uparrow` (Sheffer stroke), NOR `\downarrow` (Peirce arrow) and XNOR `\odot` — together with implication, biconditional, the negated-gate forms `\overline{A \land B}` and `\overline{A \lor B}`, equivalence, entailment and derivability. Search accepts `nand`, `xor`, `gate` and the command names.
+- **Quantum gates.** A **Quantum gates** group adds identity, Hadamard, Pauli X/Y/Z, S, T, CNOT, CZ, SWAP, Toffoli, controlled-U, controlled phase, the three rotation gates and measurement, so circuit notation no longer needs hand-typed `\mathrm{…}` names.
+- **Truth-table and Karnaugh-map blocks** in Document structures. The truth table is a ready 2-input `tabular`; the Karnaugh map is a 2-variable `array`. Both render in the preview and export like any other table or formula.
+
 ## [1.3.5] - 2026-11-22
 
 ### Fixed

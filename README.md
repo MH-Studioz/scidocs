@@ -2,7 +2,7 @@
 
 https://mh-studioz.github.io/scidocs/
 
-v1.3.5
+v1.3.6
 
 [Release notes](CHANGELOG.md)
 
@@ -164,7 +164,7 @@ If the model returns invalid KaTeX, SciDocs AI automatically sends one correctio
 
 - **Ctrl + Space** (Windows/Linux) or **Cmd + Space** (macOS) suggests LaTeX commands while typing. If macOS Spotlight captures `Cmd + Space`, use **Alt + /**.
 - **Ctrl/Cmd + F** opens find and **Ctrl/Cmd + H** opens find and replace in the editor.
-- The **Symbol Lab** search accepts `/sigma`, `\sigma` or `sigma`; symbols are wrapped in math automatically when the cursor is outside math. The **Inline math** and **Display math** items, and the toolbar wrap buttons, never add duplicate delimiters.
+- The **Symbol Lab** search accepts `/sigma`, `\sigma` or `sigma`; symbols are wrapped in math automatically when the cursor is outside math. The **Inline math** and **Display math** items, and the toolbar wrap buttons, never add duplicate delimiters. The **Logic & gates** group (NOT, AND, OR, XOR, NAND, NOR, XNOR, implication, negated-gate forms) and the **Quantum gates** group (H, X, Y, Z, S, T, CNOT, CZ, SWAP, Toffoli, rotations, measurement) are searchable by name such as `nand` or `cnot`, and **Document structures** includes ready truth-table and Karnaugh-map blocks.
 - **Guide** in the top bar covers math mode, symbol insertion, errors, history, sharing and shortcuts.
 - **Import** loads a `.tex` file into the editor; **.tex** downloads the current source.
 - **Share** copies a link containing the document; opening it imports a local `(shared)` project.

@@ -559,6 +559,29 @@ Close with the main takeaway.
       ]
     },
     {
+      id: 'logic',
+      title: 'Logic & gates',
+      icon: 'circuit-board',
+      items: [
+        { display: '\\neg A', label: 'NOT gate', insert: '\\neg ' + CURSOR },
+        { display: 'A \\land B', label: 'AND gate', insert: CURSOR + ' \\land B' },
+        { display: 'A \\lor B', label: 'OR gate', insert: CURSOR + ' \\lor B' },
+        { display: 'A \\oplus B', label: 'XOR gate', insert: CURSOR + ' \\oplus B' },
+        { display: 'A \\uparrow B', label: 'NAND gate (Sheffer stroke)', insert: CURSOR + ' \\uparrow B' },
+        { display: 'A \\downarrow B', label: 'NOR gate (Peirce arrow)', insert: CURSOR + ' \\downarrow B' },
+        { display: 'A \\odot B', label: 'XNOR gate', insert: CURSOR + ' \\odot B' },
+        { display: 'A \\to B', label: 'IMPLIES gate', insert: CURSOR + ' \\to B' },
+        { display: 'A \\leftrightarrow B', label: 'biconditional (IFF)', insert: CURSOR + ' \\leftrightarrow B' },
+        { display: 'A \\veebar B', label: 'exclusive or (veebar)', insert: CURSOR + ' \\veebar B' },
+        { display: '\\overline{A}', label: 'negation bar', insert: '\\overline{' + CURSOR + '}' },
+        { display: '\\overline{A \\land B}', label: 'NAND drawn as negated AND', insert: '\\overline{' + CURSOR + ' \\land B}' },
+        { display: '\\overline{A \\lor B}', label: 'NOR drawn as negated OR', insert: '\\overline{' + CURSOR + ' \\lor B}' },
+        { display: 'A \\equiv B', label: 'logical equivalence', insert: CURSOR + ' \\equiv B' },
+        { display: 'A \\vDash B', label: 'entails (models)', insert: CURSOR + ' \\vDash B' },
+        { display: 'A \\vdash B', label: 'derives (proves)', insert: CURSOR + ' \\vdash B' }
+      ]
+    },
+    {
       id: 'arrows',
       title: 'Arrows',
       icon: 'arrow-right',
@@ -720,6 +743,35 @@ Close with the main takeaway.
       ]
     },
     {
+      id: 'quantumgates',
+      title: 'Quantum gates',
+      icon: 'cpu',
+      items: [
+        { display: '\\mathrm{I}', label: 'identity gate', insert: '\\mathrm{I}' },
+        { display: '\\mathrm{H}', label: 'Hadamard gate', insert: '\\mathrm{H}' },
+        { display: '\\mathrm{X}', label: 'Pauli-X gate (bit flip)', insert: '\\mathrm{X}' },
+        { display: '\\mathrm{Y}', label: 'Pauli-Y gate', insert: '\\mathrm{Y}' },
+        { display: '\\mathrm{Z}', label: 'Pauli-Z gate (phase flip)', insert: '\\mathrm{Z}' },
+        { display: '\\mathrm{S}', label: 'phase gate S', insert: '\\mathrm{S}' },
+        { display: '\\mathrm{T}', label: 'pi over 8 gate T', insert: '\\mathrm{T}' },
+        { display: '\\mathrm{CNOT}', label: 'controlled NOT (CNOT, CX)', insert: '\\mathrm{CNOT}' },
+        { display: '\\mathrm{CZ}', label: 'controlled Z gate', insert: '\\mathrm{CZ}' },
+        { display: '\\mathrm{SWAP}', label: 'SWAP gate', insert: '\\mathrm{SWAP}' },
+        { display: '\\mathrm{Toffoli}', label: 'Toffoli gate (CCNOT)', insert: '\\mathrm{Toffoli}' },
+        { display: '\\mathrm{CSWAP}', label: 'Fredkin gate (CSWAP)', insert: '\\mathrm{CSWAP}' },
+        { display: '\\mathrm{C}U', label: 'controlled-U gate', insert: '\\mathrm{C}U' },
+        { display: 'U', label: 'arbitrary unitary gate', insert: 'U' },
+        { display: '\\mathrm{CPHASE}', label: 'controlled phase gate', insert: '\\mathrm{CPHASE}' },
+        { display: '\\mathrm{R}_x(\\theta)', label: 'rotation around x', insert: '\\mathrm{R}_x(' + CURSOR + ')' },
+        { display: '\\mathrm{R}_y(\\theta)', label: 'rotation around y', insert: '\\mathrm{R}_y(' + CURSOR + ')' },
+        { display: '\\mathrm{R}_z(\\theta)', label: 'rotation around z', insert: '\\mathrm{R}_z(' + CURSOR + ')' },
+        { display: 'M', label: 'measurement', insert: 'M' },
+        { display: '\\ket{0}', label: 'zero state', insert: '\\ket{0}' },
+        { display: '\\ket{1}', label: 'one state', insert: '\\ket{1}' },
+        { display: '\\ket{+}', label: 'plus state', insert: '\\ket{+}' }
+      ]
+    },
+    {
       id: 'structure',
       title: 'Document structures',
       icon: 'braces',
@@ -754,6 +806,16 @@ Close with the main takeaway.
         { icon: 'book-open', label: 'Definition', insert: '\n\\begin{definition}\n  ' + CURSOR + '\n\\end{definition}\n' },
         { icon: 'check-circle-2', label: 'Proof', insert: '\n\\begin{proof}\n  ' + CURSOR + '\n\\end{proof}\n' },
         { icon: 'list', label: 'Description', insert: '\n\\begin{description}\n  \\item[' + CURSOR + '] Definition\n\\end{description}\n' },
+        {
+          icon: 'table',
+          label: 'Truth table',
+          insert: '\n\\begin{table}[h]\n  \\centering\n  \\caption{' + CURSOR + 'Truth table}\n  \\begin{tabular}{|c|c|c|}\n    \\hline\n    $A$ & $B$ & $A \\land B$ \\\\\n    \\hline\n    0 & 0 & 0 \\\\\n    0 & 1 & 0 \\\\\n    1 & 0 & 0 \\\\\n    1 & 1 & 1 \\\\\n    \\hline\n  \\end{tabular}\n\\end{table}\n'
+        },
+        {
+          icon: 'grid-3x3',
+          label: 'Karnaugh map',
+          insert: '\n\\begin{equation*}\n  \\begin{array}{c|c|c}\n    & B=0 & B=1 \\\\\n    \\hline\n    A=0 & 0 & 1 \\\\\n    \\hline\n    A=1 & 1 & 0\n  \\end{array}\n\\end{equation*}\n'
+        },
         { icon: 'code-2', label: 'Verbatim', insert: '\n\\begin{verbatim}\n' + CURSOR + '\n\\end{verbatim}\n' },
         { icon: 'sigma', label: 'Gather', insert: '\n\\begin{gather}\n  a = b \\\\\n  c = d\n\\end{gather}\n' },
         { icon: 'sigma', label: 'Align (unnumbered)', insert: '\n\\begin{align*}\n  a &= b \\\\\n  c &= d\n\\end{align*}\n' }
