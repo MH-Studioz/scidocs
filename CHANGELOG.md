@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.3.7] - 2026-11-25
+
+### Added
+
+- **Edit prose on the sheet.** Double-click a paragraph or heading in the preview — or switch on **Edit sheet** in the preview header and click once — to edit that passage where it is rendered. **Done** (or Ctrl/Cmd + Enter) writes the change back to the `.tex` source, **Esc** cancels, and paragraphs inside lists, quotes and abstracts are editable too. Formulas, tables, captions and references stay read-only, so a rendered equation can never be flattened into text.
+
+### Changed
+
+- The renderer now records where every rendered paragraph and heading came from in the source, including comments and a preamble without `\begin{document}`, so an edit made on the sheet lands on the right line.
+
 ## [1.3.6] - 2026-11-25
 
 ### Added

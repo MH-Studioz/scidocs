@@ -1406,7 +1406,28 @@ Close with the main takeaway.
   }
 
   function stripComments(src) {
-    return String(src).replace(/(^|[^\\])%[^\n]*/g, '$1');
+    return stripCommentsWithMap(src).text;
+  }
+
+  /* Comments are removed for rendering, but the preview's on-sheet editor
+     needs to know where every rendered character came from. The map holds the
+     original index of each kept character (plus a final entry for the end). */
+  function stripCommentsWithMap(src) {
+    const s = String(src);
+    const chars = [];
+    const map = [];
+    let i = 0;
+    while (i < s.length) {
+      if (s[i] === '%' && (i === 0 || s[i - 1] !== '\\')) {
+        while (i < s.length && s[i] !== '\n') i++;
+        continue;
+      }
+      map.push(i);
+      chars.push(s[i]);
+      i++;
+    }
+    map.push(s.length);
+    return { text: chars.join(''), map };
   }
 
   function grabArg(src, name) {
@@ -2400,21 +2421,41 @@ Close with the main takeaway.
     return text;
   }
 
-  function renderProse(text, ctx) {
+  function renderProse(text, ctx, offset) {
     if (!text || !text.trim()) return '';
-    const chunks = String(text).split(/\n\s*\n/);
-    let out = '';
-    for (const chunk of chunks) {
-      const body = chunk.trim();
-      if (!body) continue;
-      const html = renderInline(body, ctx);
-      if (!html) continue;
-      out += '<p>' + html + '</p>';
+    const src = String(text);
+    const base = Number.isFinite(offset) ? offset : null;
+    const chunks = [];
+    const gap = /\n[ \t]*\n/g;
+    let cursor = 0;
+    let m;
+    while ((m = gap.exec(src)) !== null) {
+      chunks.push([cursor, m.index]);
+      cursor = m.index + m[0].length;
     }
+    chunks.push([cursor, src.length]);
+
+    let out = '';
+    chunks.forEach(([from, to]) => {
+      const raw = src.slice(from, to);
+      const body = raw.trim();
+      if (!body) return;
+      const html = renderInline(body, ctx);
+      if (!html) return;
+      /* data-src is the block's range in the rendered source, so the preview
+         can write an edit made on the sheet back to the editor. A \\par
+         splits the paragraph visually, so that case stays read-only. */
+      const lead = raw.length - raw.replace(/^\s+/, '').length;
+      const trail = raw.length - raw.replace(/\s+$/, '').length;
+      const attr = base !== null && body.indexOf('\\par') === -1
+        ? ' data-src="' + (base + from + lead) + ':' + (base + from + raw.length - trail) + '"'
+        : '';
+      out += '<p' + attr + '>' + html + '</p>';
+    });
     return out;
   }
 
-  function renderHeading(cmd, arg, ctx, numbered) {
+  function renderHeading(cmd, arg, ctx, numbered, srcStart) {
     const text = renderInline(arg, ctx).trim();
     const c = ctx.counters;
     let level = 2;
@@ -2454,8 +2495,12 @@ Close with the main takeaway.
       id
     });
 
+    const srcAttr = Number.isFinite(srcStart) && String(arg).indexOf('\\par') === -1
+      ? ' data-src="' + srcStart + ':' + (srcStart + String(arg).length) + '"'
+      : '';
+
     return (
-      '<h' + level + ' class="doc-h doc-h' + level + '" id="' + id + '">' +
+      '<h' + level + ' class="doc-h doc-h' + level + '" id="' + id + '"' + srcAttr + '>' +
       (numbered && number ? '<span class="doc-h-num">' + number + '</span>' : '') +
       '<span>' + text + '</span>' +
       '</h' + level + '>'
@@ -2485,18 +2530,20 @@ Close with the main takeaway.
     let last = 0;
     let m;
     while ((m = re.exec(inner)) !== null) {
-      if (started) items.push({ label, body: inner.slice(last, m.index) });
+      if (started) items.push({ label, body: inner.slice(last, m.index), start: last, end: m.index });
       started = true;
       label = m[1] || '';
       last = m.index + m[0].length;
     }
-    if (started) items.push({ label, body: inner.slice(last) });
+    if (started) items.push({ label, body: inner.slice(last), start: last, end: inner.length });
     return items;
   }
 
-  function renderList(kind, inner, ctx) {
+  function renderList(kind, inner, ctx, offset) {
     const items = splitItems(inner);
-    if (!items.length) return renderBlocks(inner, ctx);
+    const base = Number.isFinite(offset) ? offset : null;
+    const at = (index) => (base === null ? undefined : base + index);
+    if (!items.length) return renderBlocks(inner, ctx, at(0));
 
     if (kind === 'dl') {
       return (
@@ -2505,7 +2552,7 @@ Close with the main takeaway.
           .map(
             (it) =>
               '<dt>' + renderInline(it.label || 'Item', ctx) + '</dt>' +
-              '<dd>' + renderBlocks(it.body, ctx) + '</dd>'
+              '<dd>' + renderBlocks(it.body, ctx, at(it.start)) + '</dd>'
           )
           .join('') +
         '</dl>'
@@ -2517,7 +2564,7 @@ Close with the main takeaway.
       items
         .map((it) => {
           const head = it.label ? '<strong>' + renderInline(it.label, ctx) + '</strong> ' : '';
-          return '<li>' + head + renderBlocks(it.body, ctx) + '</li>';
+          return '<li>' + head + renderBlocks(it.body, ctx, at(it.start)) + '</li>';
         })
         .join('') +
       '</' + kind + '>'
@@ -2622,7 +2669,7 @@ Close with the main takeaway.
     );
   }
 
-  function renderTheorem(name, inner, ctx) {
+  function renderTheorem(name, inner, ctx, offset) {
     let body = String(inner);
     let custom = '';
     const opt = /^\s*\[([^\]]*)\]/.exec(body);
@@ -2630,6 +2677,7 @@ Close with the main takeaway.
       custom = opt[1];
       body = body.slice(opt[0].length);
     }
+    const bodyOffset = Number.isFinite(offset) ? offset + (opt ? opt[0].length : 0) : undefined;
     const def = (ctx && ctx.theorems && ctx.theorems[name]) ||
       { name: THEOREM_ENVS[name] || name, counter: name, within: '', numbered: true };
     let number = '';
@@ -2645,7 +2693,7 @@ Close with the main takeaway.
       '<div class="doc-theorem"><span class="doc-theorem-label">' +
       escapeHtml((def.name || name) + (number ? ' ' + number : '')) +
       (custom ? ' (' + escapeHtml(custom) + ')' : '') +
-      '</span>' + renderBlocks(body, ctx) + '</div>'
+      '</span>' + renderBlocks(body, ctx, bodyOffset) + '</div>'
     );
   }
 
@@ -2684,7 +2732,9 @@ Close with the main takeaway.
     return renderBlocks(fill(def.begin) + body + fill(def.end), ctx);
   }
 
-  function renderEnvironment(env, inner, ctx) {
+  function renderEnvironment(env, inner, ctx, offset) {
+    const base = Number.isFinite(offset) ? offset : null;
+    const nest = base === null ? undefined : base;
     if (ctx && ctx.envMap && ctx.envMap[env]) return renderCustomEnvironment(ctx.envMap[env], inner, ctx);
     if (MATH_ENVS.has(env)) {
       if (env === 'math') return renderMath(inner, false, ctx);
@@ -2720,11 +2770,11 @@ Close with the main takeaway.
 
     switch (env) {
       case 'itemize':
-        return renderList('ul', inner, ctx);
+        return renderList('ul', inner, ctx, nest);
       case 'enumerate':
-        return renderList('ol', inner, ctx);
+        return renderList('ol', inner, ctx, nest);
       case 'description':
-        return renderList('dl', inner, ctx);
+        return renderList('dl', inner, ctx, nest);
       case 'tabular':
       case 'tabular*':
       case 'array':
@@ -2738,16 +2788,16 @@ Close with the main takeaway.
       case 'abstract':
         return (
           '<div class="doc-abstract"><div class="doc-abstract-title">Abstract</div>' +
-          renderBlocks(inner, ctx) + '</div>'
+          renderBlocks(inner, ctx, nest) + '</div>'
         );
       case 'quote':
       case 'quotation':
       case 'verse':
-        return '<blockquote class="doc-quote">' + renderBlocks(inner, ctx) + '</blockquote>';
+        return '<blockquote class="doc-quote">' + renderBlocks(inner, ctx, nest) + '</blockquote>';
       case 'center':
       case 'flushleft':
       case 'flushright':
-        return '<div class="doc-center">' + renderBlocks(inner, ctx) + '</div>';
+        return '<div class="doc-center">' + renderBlocks(inner, ctx, nest) + '</div>';
       case 'verbatim':
       case 'lstlisting':
       case 'minted':
@@ -2759,13 +2809,13 @@ Close with the main takeaway.
       case 'thebibliography':
         return renderBibliography(inner, ctx);
       case 'document':
-        return renderBlocks(inner, ctx);
+        return renderBlocks(inner, ctx, nest);
       default:
         break;
     }
 
-    if (ctx && ctx.theorems && ctx.theorems[env]) return renderTheorem(env, inner, ctx);
-    return renderBlocks(inner, ctx);
+    if (ctx && ctx.theorems && ctx.theorems[env]) return renderTheorem(env, inner, ctx, nest);
+    return renderBlocks(inner, ctx, nest);
   }
 
   function renderCommandBlock(cmd, ctx) {
@@ -2775,8 +2825,13 @@ Close with the main takeaway.
     return '';
   }
 
-  function renderBlocks(text, ctx) {
+  function renderBlocks(text, ctx, offset) {
     const re = new RegExp(BLOCK_RE.source, 'g');
+    /* null means "this text no longer lines up with the source" (a float body
+       with its caption removed, a custom environment, a bibliography entry).
+       Those blocks render normally but stay read-only on the sheet. */
+    const base = Number.isFinite(offset) ? offset : null;
+    const at = (index) => (base === null ? undefined : base + index);
     let out = '';
     let last = 0;
     let m;
@@ -2791,21 +2846,21 @@ Close with the main takeaway.
         if (placement) innerStart += placement[0].length;
         const found = findEnvEnd(text, innerStart, env);
         if (!found) {
-          out += renderProse(text.slice(last, m.index), ctx);
-          out += renderProse(m[0], ctx);
+          out += renderProse(text.slice(last, m.index), ctx, at(last));
+          out += renderProse(m[0], ctx, at(m.index));
           last = m.index + m[0].length;
           re.lastIndex = last;
           continue;
         }
-        out += renderProse(text.slice(last, m.index), ctx);
-        out += renderEnvironment(env, text.slice(innerStart, found.start), ctx);
+        out += renderProse(text.slice(last, m.index), ctx, at(last));
+        out += renderEnvironment(env, text.slice(innerStart, found.start), ctx, at(innerStart));
         last = found.end;
         re.lastIndex = last;
         continue;
       }
 
       if (m[2]) {
-        out += renderProse(text.slice(last, m.index), ctx);
+        out += renderProse(text.slice(last, m.index), ctx, at(last));
         out += renderCommandBlock(m[2].toLowerCase(), ctx);
         last = m.index + m[0].length;
         re.lastIndex = last;
@@ -2816,14 +2871,14 @@ Close with the main takeaway.
         const open = m.index + m[0].length - 1;
         const close = matchBrace(text, open);
         if (close < 0) continue;
-        out += renderProse(text.slice(last, m.index), ctx);
-        out += renderHeading(m[3].toLowerCase(), text.slice(open + 1, close), ctx, m[4] !== '*');
+        out += renderProse(text.slice(last, m.index), ctx, at(last));
+        out += renderHeading(m[3].toLowerCase(), text.slice(open + 1, close), ctx, m[4] !== '*', at(open + 1));
         last = close + 1;
         re.lastIndex = last;
       }
     }
 
-    out += renderProse(text.slice(last), ctx);
+    out += renderProse(text.slice(last), ctx, at(last));
     return out;
   }
 
@@ -3410,7 +3465,8 @@ Close with the main takeaway.
   }
 
   function compileDocument(source) {
-    const src = stripComments(source);
+    const stripped = stripCommentsWithMap(source);
+    const src = stripped.text;
     const ctx = makeCtx({});
     const macroSet = collectUserMacros(src);
     ctx.macros = macroSet.macros;
@@ -3426,33 +3482,40 @@ Close with the main takeaway.
     const beginMatch = /\\begin\s*\{document\}/.exec(src);
     let preamble = '';
     let body = src;
+    let bodyStart = 0;
 
     if (beginMatch) {
       preamble = src.slice(0, beginMatch.index);
-      const after = src.slice(beginMatch.index + beginMatch[0].length);
+      bodyStart = beginMatch.index + beginMatch[0].length;
+      const after = src.slice(bodyStart);
       const endIdx = after.search(/\\end\s*\{document\}/);
       body = endIdx >= 0 ? after.slice(0, endIdx) : after;
     } else {
       const preambleLine = /^\s*\\(documentclass|usepackage|RequirePackage|newcommand|renewcommand|providecommand|newenvironment|DeclareMathOperator|DeclareRobustCommand|def|let|title|author|date|geometry|pagestyle|thispagestyle|setlength|addtolength|setcounter|bibliography|bibliographystyle|graphicspath|hypersetup|newtheorem)\b/;
-      const lines = body.split('\n');
+      /* Preamble lines are blanked rather than removed: every offset in the
+         rendered body then still points at the same place in the source, which
+         the on-sheet editor relies on. */
       const pre = [];
-      const rest = [];
-      lines.forEach((line) => (preambleLine.test(line) ? pre : rest).push(line));
+      body = src.split('\n').map((line) => {
+        if (!preambleLine.test(line)) return line;
+        pre.push(line);
+        return line.replace(/[^\r]/g, ' ');
+      }).join('\n');
       preamble = pre.join('\n');
-      body = rest.join('\n');
     }
 
+    ctx.editMap = { map: stripped.map, bodyStart };
     ctx.meta = readMeta(preamble);
 
     if (/\\tableofcontents\b/.test(body)) {
       const probe = makeCtx(ctx.meta);
-      renderBlocks(body, probe);
+      renderBlocks(body, probe, 0);
       ctx.headings = probe.headings;
     }
 
     let html = '';
     try {
-      html = renderBlocks(body, ctx);
+      html = renderBlocks(body, ctx, 0);
     } catch (err) {
       ctx.errors.push('Renderer stopped: ' + (err && err.message ? err.message : String(err)));
       html =
@@ -3985,14 +4048,145 @@ Close with the main takeaway.
     openModal('#problemsModal');
   }
 
+  /* ------------------------------------------------------------------ *
+   *  Editing prose on the sheet
+   * ------------------------------------------------------------------ */
+  let sheetEdit = null;
+  let lastEditMap = null;
+
+  function sheetBlockFor(node) {
+    const preview = $('#preview');
+    if (!preview || !node || !node.closest) return null;
+    const block = node.closest('p[data-src], h2[data-src], h3[data-src], h4[data-src], h5[data-src]');
+    if (!block || !preview.contains(block)) return null;
+    if (block.closest('table, figure, .doc-toc')) return null;
+    return block;
+  }
+
+  function sheetSourceRange(block) {
+    if (!lastEditMap || !block) return null;
+    const parts = String(block.getAttribute('data-src') || '').split(':');
+    const from = Number(parts[0]);
+    const to = Number(parts[1]);
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return null;
+    const start = lastEditMap.map[lastEditMap.bodyStart + from];
+    const end = lastEditMap.map[lastEditMap.bodyStart + to];
+    if (start === undefined || end === undefined || end < start) return null;
+    return { start, end };
+  }
+
+  function discardSheetEdit() {
+    if (!sheetEdit) return;
+    const current = sheetEdit;
+    sheetEdit = null;
+    if (current.wrap && current.wrap.parentNode) current.wrap.parentNode.removeChild(current.wrap);
+    if (current.block) current.block.style.display = '';
+  }
+
+  function finishSheetEdit(commit) {
+    if (!sheetEdit || !cm) return;
+    const current = sheetEdit;
+    const value = current.editor.value;
+    const previous = cm.getValue().slice(current.start, current.end);
+    sheetEdit = null;
+    if (current.wrap && current.wrap.parentNode) current.wrap.parentNode.removeChild(current.wrap);
+    if (current.block) current.block.style.display = '';
+    if (!commit || value === previous) return;
+    cm.replaceRange(value, cm.posFromIndex(current.start), cm.posFromIndex(current.end));
+    toast('Sheet edit written to the source', 'success');
+  }
+
+  function startSheetEdit(block) {
+    if (!cm || !block) return;
+    const range = sheetSourceRange(block);
+    if (!range) return;
+    discardSheetEdit();
+    const value = cm.getValue().slice(range.start, range.end);
+    const wrap = document.createElement('div');
+    wrap.className = 'sheet-edit';
+    wrap.innerHTML =
+      '<textarea class="sheet-editor" spellcheck="false" aria-label="Edit this passage on the sheet"></textarea>' +
+      '<div class="sheet-edit-actions">' +
+      '<span class="sheet-edit-hint">Editing in place \u00b7 Esc cancels \u00b7 Ctrl/Cmd + Enter saves</span>' +
+      '<button type="button" class="btn btn-teal btn-sm" data-sheet-done>Done</button>' +
+      '<button type="button" class="btn btn-ghost btn-sm" data-sheet-cancel>Cancel</button>' +
+      '</div>';
+    const editor = wrap.querySelector('textarea');
+    editor.value = value;
+    block.style.display = 'none';
+    block.parentNode.insertBefore(wrap, block.nextSibling);
+    sheetEdit = { block, wrap, editor, start: range.start, end: range.end };
+    const fit = () => {
+      editor.style.height = 'auto';
+      editor.style.height = Math.max(40, editor.scrollHeight + 2) + 'px';
+    };
+    editor.addEventListener('input', fit);
+    editor.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); finishSheetEdit(false); }
+      else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        finishSheetEdit(true);
+      }
+    });
+    const done = wrap.querySelector('[data-sheet-done]');
+    const cancel = wrap.querySelector('[data-sheet-cancel]');
+    done.addEventListener('mousedown', (event) => event.preventDefault());
+    cancel.addEventListener('mousedown', (event) => event.preventDefault());
+    done.addEventListener('click', () => finishSheetEdit(true));
+    cancel.addEventListener('click', () => finishSheetEdit(false));
+    fit();
+    editor.focus();
+    editor.setSelectionRange(editor.value.length, editor.value.length);
+  }
+
+  function sheetEditTarget(event) {
+    const target = event && event.target;
+    if (!target || !target.closest) return null;
+    if (target.closest('a, .katex, .sheet-edit, .doc-toc')) return null;
+    const selection = window.getSelection ? String(window.getSelection()) : '';
+    if (selection.trim()) return null;
+    return sheetBlockFor(target);
+  }
+
+  function bindSheetEditing() {
+    const preview = $('#preview');
+    if (!preview) return;
+    const toggle = $('#sheetEditBtn');
+    if (toggle) {
+      toggle.addEventListener('click', () => {
+        const on = !preview.classList.contains('is-sheet-edit');
+        preview.classList.toggle('is-sheet-edit', on);
+        toggle.setAttribute('aria-pressed', String(on));
+        toast(on
+          ? 'Sheet editing on \u2014 click a paragraph or heading in the preview.'
+          : 'Sheet editing off.', 'info');
+      });
+    }
+    preview.addEventListener('dblclick', (event) => {
+      const block = sheetEditTarget(event);
+      if (!block) return;
+      event.preventDefault();
+      startSheetEdit(block);
+    });
+    preview.addEventListener('click', (event) => {
+      if (!preview.classList.contains('is-sheet-edit')) return;
+      const block = sheetEditTarget(event);
+      if (!block) return;
+      event.preventDefault();
+      startSheetEdit(block);
+    });
+  }
+
   function renderNow(options) {
     if (!cm) return;
     const opts = options || {};
     const preview = $('#preview');
     if (!preview) return;
+    discardSheetEdit();
 
     const started = performance.now();
     const result = compileDocument(cm.getValue());
+    lastEditMap = (result.ctx && result.ctx.editMap) || null;
 
     preview.classList.remove('is-stale');
     preview.classList.toggle('is-empty', !result.html.trim());
@@ -7749,6 +7943,7 @@ Close with the main takeaway.
     renderSymbols();
     initEditor();
     bindUi();
+    bindSheetEditing();
     updateTabName();
     if (cm) {
       renderNow();

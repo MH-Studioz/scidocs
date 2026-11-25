@@ -3039,3 +3039,70 @@ li.CodeMirror-hint-active {
     break-after: avoid;
   }
 }
+
+/* --------------------------- on-sheet editing --------------------------- */
+.paper [data-src] {
+  border-radius: 4px;
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+
+.paper.is-sheet-edit [data-src] {
+  cursor: text;
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.3);
+}
+
+.paper.is-sheet-edit [data-src]:hover {
+  background: rgba(99, 102, 241, 0.09);
+}
+
+.sheet-edit {
+  margin: 0 0 0.9em;
+}
+
+.sheet-editor {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px solid rgba(99, 102, 241, 0.75);
+  border-radius: 6px;
+  background: #F8FAFF;
+  color: #111827;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  resize: vertical;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.14);
+}
+
+.sheet-editor:focus {
+  border-color: #6366F1;
+}
+
+.sheet-edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-family: var(--sans);
+}
+
+.sheet-edit-hint {
+  flex: 1 1 auto;
+  color: #64748B;
+  font-size: 11.5px;
+}
+
+.sheet-edit-actions .btn {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 11.5px;
+}
+
+.chip-btn[aria-pressed="true"] {
+  border-color: rgba(99, 102, 241, 0.7);
+  background: var(--primary-soft);
+  color: #E0E7FF;
+}
