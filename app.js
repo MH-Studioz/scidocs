@@ -4134,11 +4134,17 @@ Close with the main takeaway.
     };
     editor.addEventListener('input', fit);
     editor.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') { event.preventDefault(); finishSheetEdit(false); }
-      else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         finishSheetEdit(true);
       }
+    });
+    /* Escape cancels from anywhere in the editor, including the buttons. */
+    wrap.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      finishSheetEdit(false);
     });
     const done = wrap.querySelector('[data-sheet-done]');
     const cancel = wrap.querySelector('[data-sheet-cancel]');

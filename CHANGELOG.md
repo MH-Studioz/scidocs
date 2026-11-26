@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.9] - 2026-11-26
+
+### Fixed
+
+- **Escape now cancels the on-sheet editor from anywhere inside it.** With focus on **Done** or **Cancel** the key previously did nothing; it is handled on the whole editor now, so it cancels, drops the draft and returns focus to the passage being edited.
+
 ## [1.3.8] - 2026-11-25
 
 ### Added
